@@ -9,15 +9,8 @@ import Sidebar from '../components/dashboard/Sidebar';
 import StatsCards from '../components/dashboard/StatsCards';
 import CompanyTracker from '../components/dashboard/CompanyTracker';
 import ActivityChart from '../components/dashboard/ActivityChart';
-import AIMentor from '../components/dashboard/AIMentor';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
-
-const diffColors = {
-  Easy:   'text-green-400 bg-green-400/10',
-  Medium: 'text-yellow-400 bg-yellow-400/10',
-  Hard:   'text-red-400 bg-red-400/10',
-};
 
 const topCompanies = [
   { name: 'Google', slug: 'google', desc: 'Practice top-asked questions at Google.', color: '#4285F4' },
@@ -145,58 +138,10 @@ export default function Dashboard() {
                 <CompanyTracker solvedByCompany={solvedByCompany} />
               </div>
 
-              {/* Recent Problems Table */}
-              <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-white font-bold text-sm">Recent Solved Problems</h3>
-                </div>
-                <div className="space-y-2">
-                  {recentSolved.map((p, i) => (
-                    <motion.div key={i} initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }}
-                      transition={{ delay: i*0.06 }}
-                      className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-white/5 transition-all cursor-pointer group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-full border-2 border-green-500 bg-green-500/10 flex items-center justify-center">
-                          <span className="text-green-500 text-[8px] font-bold">✓</span>
-                        </div>
-                        <span className="text-sm text-gray-300 group-hover:text-white font-medium transition-colors">{p.title}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-[10px] text-gray-600">
-                          {new Date(p.solvedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${diffColors[p.difficulty]}`}>{p.difficulty}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Keep Practicing CTA Banner */}
-              <div className="relative rounded-2xl overflow-hidden p-6">
-                <div className="absolute inset-0 bg-gradient-to-r from-[#FF7A00]/20 via-[#FFB800]/10 to-transparent" />
-                <div className="absolute inset-0 border border-[#FF7A00]/20 rounded-2xl" />
-                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-white font-bold text-base mb-1">Continue Your Practice 🎯</h3>
-                    <p className="text-gray-400 text-sm">
-                      {streak?.current > 0 
-                        ? `You are on a ${streak.current}-day streak! Keep the momentum going.`
-                        : 'Practice at least one question today to build your streak!'}
-                    </p>
-                  </div>
-                  <Link to="/company/google" className="shrink-0 text-sm font-bold text-black px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#FF7A00] to-[#FFD700] hover:opacity-90 transition-opacity">
-                    Practice Now &rarr;
-                  </Link>
-                </div>
-              </div>
             </>
           )}
         </div>
       </main>
-
-      {/* Floating AI Mentor Widget */}
-      <AIMentor />
     </div>
   );
 }

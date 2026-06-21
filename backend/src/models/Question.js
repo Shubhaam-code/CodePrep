@@ -29,6 +29,36 @@ const QuestionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    description: {
+      type: String,
+      default: '',
+    },
+    examples: [
+      {
+        input: String,
+        output: String,
+        explanation: String,
+      }
+    ],
+    constraints: [String],
+    starterCode: {
+      python: String,
+      javascript: String,
+      java: String,
+      cpp: String,
+    },
+    testCases: [
+      {
+        input: String,
+        expectedOutput: String,
+      }
+    ],
+    hiddenTestCases: [
+      {
+        input: String,
+        expectedOutput: String,
+      }
+    ]
   },
   {
     timestamps: true,

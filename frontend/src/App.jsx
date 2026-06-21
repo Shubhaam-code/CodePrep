@@ -16,6 +16,7 @@ import Arena         from './pages/dashboard/Arena';
 import Roadmap       from './pages/dashboard/Roadmap';
 import History       from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
+import PracticeWorkspace from './pages/dashboard/PracticeWorkspace';
 
 // Redirect logged-in users away from auth pages
 const PublicOnlyRoute = () => {
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/dashboard/arena"      element={<Arena />} />
           <Route path="/dashboard/roadmap"    element={<Roadmap />} />
           <Route path="/dashboard/history"    element={<History />} />
+          <Route path="/dashboard/practice/:questionId" element={<PracticeWorkspace />} />
           
           {/* Company-specific Page */}
           <Route path="/company/:name"        element={<CompanyPage />} />

@@ -171,13 +171,14 @@ export default function TopicQuestions() {
 
                           {/* Title */}
                           <td className="px-6 py-4">
-                            <span
-                              className={`font-semibold transition ${
+                            <Link
+                              to={`/dashboard/practice/${q._id}`}
+                              className={`font-semibold hover:text-[#FF7A00] transition-colors cursor-pointer ${
                                 isSolved ? 'line-through text-gray-500 font-normal' : 'text-white'
                               }`}
                             >
                               {q.title}
-                            </span>
+                            </Link>
                           </td>
 
                           {/* Difficulty */}

@@ -43,10 +43,12 @@ export default function MockExam() {
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState({}); // { [qId]: 'A'|'B'|'C'|'D' }
+  const [markedForReview, setMarkedForReview] = useState({}); // { [qId]: boolean }
   const [timeLeft, setTimeLeft] = useState(0); // in seconds
   const [tabWarnings, setTabWarnings] = useState(0);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showFsWarning, setShowFsWarning] = useState(false);
+  const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Results state
@@ -129,6 +131,32 @@ export default function MockExam() {
 
     return () => clearInterval(timerRef.current);
   }, [screen]);
+
+  // Load autosaved progress
+  useEffect(() => {
+    if (!examId) return;
+    const saved = localStorage.getItem(`mock_exam_${examId}`);
+    if (saved) {
+      try {
+        const { savedAnswers, savedMarked, savedTime } = JSON.parse(saved);
+        if (savedAnswers) setAnswers(savedAnswers);
+        if (savedMarked) setMarkedForReview(savedMarked);
+        if (savedTime && savedTime > 0) setTimeLeft(savedTime);
+      } catch (err) {
+        console.error('Error loading saved exam session:', err);
+      }
+    }
+  }, [examId]);
+
+  // Save progress changes (Autosave)
+  useEffect(() => {
+    if (!examId || screen !== 'active') return;
+    localStorage.setItem(`mock_exam_${examId}`, JSON.stringify({
+      savedAnswers: answers,
+      savedMarked: markedForReview,
+      savedTime: timeLeft
+    }));
+  }, [examId, answers, markedForReview, timeLeft, screen]);
 
   // Helper: Request Fullscreen
   const enterFullscreen = async () => {
@@ -441,23 +469,33 @@ export default function MockExam() {
                   <button
                     disabled={currentIdx === 0}
                     onClick={() => setCurrentIdx(prev => prev - 1)}
-                    className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                    className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                   >
                     <ChevronLeft size={16} /> Previous
                   </button>
 
+                  <button
+                    onClick={() => setMarkedForReview(prev => ({ ...prev, [currentQ._id]: !prev[currentQ._id] }))}
+                    className={`cursor-pointer px-4 py-2 text-xs font-bold rounded-xl border transition-all ${
+                      markedForReview[currentQ._id]
+                        ? 'bg-indigo-500/10 border-indigo-500/35 text-indigo-400 font-bold'
+                        : 'bg-white/5 border-white/8 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {markedForReview[currentQ._id] ? '★ Marked for Review' : '☆ Mark for Review'}
+                  </button>
+
                   {currentIdx === questions.length - 1 ? (
                     <button
-                      onClick={() => triggerAutoSubmit('user')}
-                      disabled={isSubmitting}
-                      className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-extrabold text-xs rounded-xl hover:opacity-90 transition-opacity"
+                      onClick={() => setShowSubmitConfirmModal(true)}
+                      className="cursor-pointer px-6 py-2.5 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-extrabold text-xs rounded-xl hover:opacity-90 transition-opacity"
                     >
-                      {isSubmitting ? 'Submitting...' : 'Finish Assessment'}
+                      Finish Assessment
                     </button>
                   ) : (
                     <button
                       onClick={() => setCurrentIdx(prev => prev + 1)}
-                      className="flex items-center gap-1 text-xs font-semibold text-[#FF7A00] hover:text-white"
+                      className="flex items-center gap-1 text-xs font-semibold text-[#FF7A00] hover:text-white cursor-pointer"
                     >
                       Next Question <ChevronRight size={16} />
                     </button>
@@ -466,36 +504,59 @@ export default function MockExam() {
               </div>
 
               {/* Navigator Sidebar (Right) */}
-              <div className="w-64 bg-[#0B0B0F] border-l border-white/5 p-5 hidden md:flex flex-col justify-between">
-                <div className="space-y-4">
+              <div className="w-64 bg-[#0B0B0F] border-l border-white/5 p-5 hidden md:flex flex-col justify-between overflow-y-auto shrink-0 select-none">
+                <div className="space-y-6">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Navigator</h3>
                   
                   {/* Grid */}
                   <div className="grid grid-cols-4 gap-2">
                     {questions.map((q, idx) => {
                       const isAnswered = !!answers[q._id];
+                      const isMarked = !!markedForReview[q._id];
                       const isActive = idx === currentIdx;
+
+                      let styleClasses = 'bg-white/5 text-gray-500 border border-transparent';
+                      if (isActive) {
+                        styleClasses = 'border-2 border-[#FF7A00] text-[#FFB800] bg-white/5';
+                      } else if (isMarked) {
+                        styleClasses = 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/25';
+                      } else if (isAnswered) {
+                        styleClasses = 'bg-green-500/10 text-green-400 border border-green-500/25';
+                      }
 
                       return (
                         <button
                           key={q._id}
                           onClick={() => setCurrentIdx(idx)}
-                          className={`cursor-pointer aspect-square rounded-xl text-xs font-bold transition-all flex items-center justify-center ${
-                            isActive 
-                              ? 'border-2 border-[#FF7A00] text-[#FFB800] bg-white/5' 
-                              : isAnswered
-                              ? 'bg-green-500/10 text-green-400 border border-green-500/25'
-                              : 'bg-white/5 text-gray-500 border border-transparent'
-                          }`}
+                          className={`cursor-pointer aspect-square rounded-xl text-xs font-bold transition-all flex items-center justify-center ${styleClasses}`}
                         >
                           {idx + 1}
                         </button>
                       );
                     })}
                   </div>
+
+                  {/* Status Legend Palette */}
+                  <div className="pt-4 border-t border-white/5 space-y-2">
+                    <span className="text-[9px] uppercase font-black text-gray-500 tracking-wider">Legend Colors</span>
+                    <div className="space-y-1.5 text-[10px] text-gray-400 font-semibold">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded bg-green-500/10 border border-green-500/25" />
+                        <span>Answered ({Object.values(answers).filter(Boolean).length})</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded bg-indigo-500/10 border border-indigo-500/25" />
+                        <span>Marked for Review ({Object.values(markedForReview).filter(Boolean).length})</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded bg-white/5 border border-transparent" />
+                        <span>Not Answered ({questions.length - Object.values(answers).filter(Boolean).length})</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 text-[10px] text-gray-500 leading-relaxed">
+                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 text-[10px] text-gray-500 leading-relaxed mt-4">
                   🔐 Timed security is active. Exiting tab triggers immediate automatic submission.
                 </div>
               </div>
@@ -551,6 +612,45 @@ export default function MockExam() {
                         className="px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-xs rounded-xl"
                       >
                         Submit Exam
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* Submit Confirmation Modal */}
+            <AnimatePresence>
+              {showSubmitConfirmModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+                  <motion.div initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }} exit={{ opacity:0, scale:0.9 }}
+                    className="bg-[#0D0D12] border border-white/5 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative">
+                    <div className="w-12 h-12 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mx-auto mb-4 text-[#FF7A00]">
+                      <Info size={20} />
+                    </div>
+                    <h3 className="text-white font-bold text-base mb-2">Submit Assessment?</h3>
+                    <p className="text-gray-400 text-xs leading-relaxed mb-6">
+                      You have answered <span className="text-[#FF7A00] font-bold">{Object.values(answers).filter(Boolean).length}</span> out of <span className="text-white font-bold">{questions.length}</span> questions.
+                      {Object.values(markedForReview).filter(Boolean).length > 0 && (
+                        <span> <br />Note: <span className="text-indigo-400 font-bold">{Object.values(markedForReview).filter(Boolean).length}</span> questions are marked for review.</span>
+                      )}
+                      <br /><br />Are you sure you want to finish and submit your exam?
+                    </p>
+                    <div className="flex gap-3 justify-center">
+                      <button 
+                        onClick={() => setShowSubmitConfirmModal(false)}
+                        className="cursor-pointer px-5 py-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs rounded-xl"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setShowSubmitConfirmModal(false);
+                          triggerAutoSubmit('user');
+                        }}
+                        className="cursor-pointer px-6 py-2 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-bold text-xs rounded-xl"
+                      >
+                        Yes, Submit
                       </button>
                     </div>
                   </motion.div>

@@ -289,4 +289,59 @@ router.get('/result/:examId', async (req, res) => {
   }
 });
 
+/**
+ * @route   DELETE /api/exam/history/all
+ * @desc    Delete all mock exam history
+ */
+router.delete('/history/all', async (req, res) => {
+  try {
+    await ExamSession.deleteMany({ userId: req.user.id });
+    res.status(200).json({ message: 'All exam history deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting all exam history:', error);
+    res.status(500).json({ message: 'Server error deleting exam history' });
+  }
+});
+
+/**
+ * @route   POST /api/exam/history/delete-multiple
+ * @desc    Delete multiple mock exam sessions
+ */
+router.post('/history/delete-multiple', async (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) {
+    return res.status(400).json({ message: 'Invalid list of IDs' });
+  }
+  try {
+    await ExamSession.deleteMany({
+      _id: { $in: ids },
+      userId: req.user.id
+    });
+    res.status(200).json({ message: 'Selected exam history deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting selected exam history:', error);
+    res.status(500).json({ message: 'Server error deleting exam history' });
+  }
+});
+
+/**
+ * @route   DELETE /api/exam/history/:id
+ * @desc    Delete single mock exam session
+ */
+router.delete('/history/:id', async (req, res) => {
+  try {
+    const session = await ExamSession.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found or unauthorized' });
+    }
+    res.status(200).json({ message: 'Exam session deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting single exam history:', error);
+    res.status(500).json({ message: 'Server error deleting exam history' });
+  }
+});
+
 module.exports = router;

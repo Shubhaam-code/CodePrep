@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react';
+
 import { Link } from 'react-router-dom';
 
 const GithubIcon = ({ size = 14 }) => (
@@ -50,7 +50,7 @@ const LinkedinIcon = ({ size = 14 }) => (
 );
 
 const links = {
-  Product: ['Questions','Mock Assessments','Coding Playground','Resume Analyzer','Roadmaps','Pricing'],
+  Product: ['Questions','Mock Assessments','Coding Arena','Resume Analyzer','Roadmaps'],
   Resources: ['Documentation','Blog','Interview Tips','DSA Handbook','System Design Guide'],
   Company: ['About Us','Careers','Press','Privacy Policy','Terms of Service'],
   Contact: ['help@codeprep.ai','Twitter','Discord Community','LinkedIn'],
@@ -64,16 +64,11 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 lg:col-span-1">
             <Link to="/" className="inline-flex items-center gap-2 mb-4 group">
-              <div className="relative">
-                <div className="absolute inset-0 bg-[#FF7A00] rounded-lg blur-md opacity-60 group-hover:opacity-90 transition-opacity" />
-                <div className="relative bg-gradient-to-br from-[#FF7A00] to-[#FFD700] p-1.5 rounded-lg">
-                  <Zap size={16} className="text-black fill-black" />
-                </div>
-              </div>
-              <span className="font-bold text-base">
-                <span className="text-white">CodePrep</span>{' '}
-                <span className="bg-gradient-to-r from-[#FF7A00] to-[#FFD700] bg-clip-text text-transparent">AI</span>
-              </span>
+              <img 
+                src="/CodePrepLogoHorizontal.svg" 
+                alt="CodePrep AI Logo" 
+                className="h-10 w-auto object-contain transition-transform group-hover:scale-102"
+              />
             </Link>
             <p className="text-gray-600 text-xs leading-relaxed mb-5">
               The smartest way to prepare for tech interviews. Practice smarter, not harder.

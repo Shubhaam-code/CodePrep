@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Menu, X, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { logout } from '../store/authSlice';
@@ -42,16 +42,11 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-[#FF7A00] rounded-lg blur-md opacity-60 group-hover:opacity-90 transition-opacity" />
-              <div className="relative bg-gradient-to-br from-[#FF7A00] to-[#FFD700] p-1.5 rounded-lg">
-                <Zap size={16} className="text-black fill-black" />
-              </div>
-            </div>
-            <span className="font-bold text-lg tracking-tight">
-              <span className="text-white">CodePrep</span>{' '}
-              <span className="bg-gradient-to-r from-[#FF7A00] to-[#FFD700] bg-clip-text text-transparent">AI</span>
-            </span>
+            <img 
+              src="/CodePrepLogoHorizontal.svg" 
+              alt="CodePrep AI Logo" 
+              className="h-10 w-auto object-contain transition-transform group-hover:scale-102"
+            />
           </Link>
 
           {/* Desktop Right Side */}

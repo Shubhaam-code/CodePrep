@@ -13,8 +13,22 @@ const userRoutes = require('./routes/user');
 const examRoutes = require('./routes/exam');
 const playgroundRoutes = require('./routes/playground');
 const questionRoutes = require('./routes/questions');
+const arenaRoutes = require('./routes/arena');
+const judgeRoutes = require('./routes/judge');
 
 const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+// Bind Socket.io logic
+require('./socket')(io);
 
 // Connect to MongoDB
 connectDB();
@@ -41,6 +55,8 @@ app.use('/api/user', userRoutes);
 app.use('/api/exam', examRoutes);
 app.use('/api/playground', playgroundRoutes);
 app.use('/api/questions', questionRoutes);
+app.use('/api/arena', arenaRoutes);
+app.use('/api/judge', judgeRoutes);
 
 // Mock Exam History Endpoint
 const ExamSession = require('./models/ExamSession');
@@ -75,6 +91,6 @@ app.use((err, req, res, next) => {
 
 // Listen on PORT
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -58,4 +58,21 @@ router.get('/topic/:topicName', async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/questions/:id
+ * @desc    Get question by ID
+ */
+router.get('/:id', async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+    res.status(200).json(question);
+  } catch (error) {
+    console.error('Error fetching question by ID:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

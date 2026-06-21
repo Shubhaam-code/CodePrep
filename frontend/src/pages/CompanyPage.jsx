@@ -255,15 +255,16 @@ function CompanyPage() {
 
                       {/* Title */}
                       <td className="px-6 py-4">
-                        <span
-                          className={`font-semibold transition ${
+                        <Link
+                          to={`/dashboard/practice/${q._id}`}
+                          className={`font-semibold hover:text-[#FF7A00] transition-colors cursor-pointer ${
                             isSolved
                               ? 'line-through text-slate-500'
                               : 'text-slate-200'
                           }`}
                         >
                           {q.title}
-                        </span>
+                        </Link>
                       </td>
 
                       {/* Difficulty Badge */}
