@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Code2, Building2, ClipboardList,
-  Terminal, Map, History, Settings, Zap, ChevronRight, LogOut,
+  LayoutDashboard, Code2, ClipboardList,
+  Terminal, Map, History, Settings, Zap, ChevronRight, LogOut, Home
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../../store/store';
@@ -11,9 +11,9 @@ import { logout } from '../../store/authSlice';
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
   { icon: Code2,           label: 'DSA Practice', href: '/dashboard/dsa' },
-  { icon: Building2,       label: 'Companies', href: '/dashboard/companies' },
+  { icon: Home,            label: 'Home', href: '/' },
   { icon: ClipboardList,   label: 'Mock Assessments', href: '/dashboard/mock' },
-  { icon: Terminal,        label: 'Coding Playground', href: '/dashboard/playground' },
+  { icon: Terminal,        label: 'Coding Arena', href: '/dashboard/arena' },
   { icon: Map,             label: 'Roadmaps', href: '/dashboard/roadmap' },
   { icon: History,         label: 'History', href: '/dashboard/history' },
 ];

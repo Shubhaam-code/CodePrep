@@ -12,7 +12,7 @@ import Register      from './pages/Register';
 import DSAPractice   from './pages/dashboard/DSAPractice';
 import CompaniesPage from './pages/dashboard/CompaniesPage';
 import MockExam      from './pages/dashboard/MockExam';
-import Playground    from './pages/dashboard/Playground';
+import Arena         from './pages/dashboard/Arena';
 import Roadmap       from './pages/dashboard/Roadmap';
 import History       from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
@@ -51,7 +51,7 @@ export default function App() {
           <Route path="/dashboard/dsa"        element={<DSAPractice />} />
           <Route path="/dashboard/companies"  element={<CompaniesPage />} />
           <Route path="/dashboard/mock"       element={<MockExam />} />
-          <Route path="/dashboard/playground" element={<Playground />} />
+          <Route path="/dashboard/arena"      element={<Arena />} />
           <Route path="/dashboard/roadmap"    element={<Roadmap />} />
           <Route path="/dashboard/history"    element={<History />} />
           

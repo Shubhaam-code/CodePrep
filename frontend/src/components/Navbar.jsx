@@ -67,10 +67,13 @@ export default function Navbar() {
                   Dashboard
                 </Link>
 
-                {/* Username Greeting */}
-                <span className="text-sm font-semibold text-gray-300 px-3 py-1.5 bg-white/5 rounded-lg border border-white/8">
-                  Hi, {user?.name || 'User'}
-                </span>
+                {/* User Avatar Circle */}
+                <div 
+                  className="w-8 h-8 rounded-full bg-[#FF7A00] text-black font-black text-xs flex items-center justify-center select-none uppercase shadow-lg shadow-[#FF7A00]/10 shrink-0"
+                  title={user?.name || 'User'}
+                >
+                  {(user?.name || 'U')[0]}
+                </div>
 
                 {/* Logout Button */}
                 <button
@@ -125,8 +128,11 @@ export default function Navbar() {
             <div className="px-6 py-5 flex flex-col gap-3">
               {isAuthenticated ? (
                 <>
-                  <div className="text-xs text-gray-500 pb-1 border-b border-white/5">
-                    Welcome, <span className="text-white font-semibold">{user?.name || 'User'}</span>
+                  <div className="flex items-center gap-2.5 pb-2.5 border-b border-white/5">
+                    <div className="w-8 h-8 rounded-full bg-[#FF7A00] text-black font-black text-xs flex items-center justify-center select-none uppercase shrink-0">
+                      {(user?.name || 'U')[0]}
+                    </div>
+                    <span className="text-sm text-white font-semibold">{user?.name || 'User'}</span>
                   </div>
                   <Link
                     to="/dashboard"
@@ -137,7 +143,7 @@ export default function Navbar() {
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="cursor-pointer flex items-center gap-2 text-sm text-[#FF7A00] hover:text-[#FFB800] py-2 transition-colors text-left"
+                    className="cursor-pointer flex items-center gap-2 text-sm text-gray-400 hover:text-[#FF7A00] py-2 transition-colors text-left font-semibold"
                   >
                     <LogOut size={14} /> Logout
                   </button>
@@ -145,7 +151,7 @@ export default function Navbar() {
               ) : (
                 <>
                   <Link to="/login" onClick={closeMobile}
-                    className="text-sm text-gray-300 hover:text-white py-2 transition-colors">
+                    className="text-sm text-gray-300 hover:text-white py-2 transition-colors font-medium">
                     Login
                   </Link>
                   <Link to="/register" onClick={closeMobile}

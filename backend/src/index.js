@@ -42,6 +42,24 @@ app.use('/api/exam', examRoutes);
 app.use('/api/playground', playgroundRoutes);
 app.use('/api/questions', questionRoutes);
 
+// Mock Exam History Endpoint
+const ExamSession = require('./models/ExamSession');
+const authMiddleware = require('./middleware/auth');
+app.get('/api/history', authMiddleware, async (req, res) => {
+  try {
+    const sessions = await ExamSession.find({ userId: req.user.id })
+      .populate({
+        path: 'questions.questionId',
+        model: 'Question'
+      })
+      .sort({ startTime: -1 });
+    res.status(200).json(sessions);
+  } catch (error) {
+    console.error('Error fetching exam history:', error);
+    res.status(500).json({ message: 'Server error fetching exam history' });
+  }
+});
+
 // Serve frontend static build files in production mode
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../frontend/dist')));
