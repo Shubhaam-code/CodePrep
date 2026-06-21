@@ -1,0 +1,20 @@
+{
+  "name": "leetcode-company-tracker",
+  "version": "1.0.0",
+  "description": "Fullstack LeetCode Company Tracker",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "seed": "node backend/src/scripts/seed.js",
+    "install-all": "concurrently \"npm install --prefix backend\" \"npm install --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "concurrency": "^0.1.4"
+  }
+}
