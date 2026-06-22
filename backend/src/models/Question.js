@@ -29,6 +29,38 @@ const QuestionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    isPremium: {
+      type: Boolean,
+      default: false,
+    },
+    gfgUrl: {
+      type: String,
+      default: '',
+    },
+    neetcodeUrl: {
+      type: String,
+      default: '',
+    },
+    youtubeUrl: {
+      type: String,
+      default: '',
+    },
+    fullContent: {
+      type: String,
+      default: '',
+    },
+    exampleTestcases: {
+      type: String,
+      default: '',
+    },
+    hints: {
+      type: [String],
+      default: [],
+    },
+    contentFetchedAt: {
+      type: Date,
+      default: null,
+    },
     description: {
       type: String,
       default: '',

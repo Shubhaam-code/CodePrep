@@ -24,9 +24,21 @@ const ExamSessionSchema = new mongoose.Schema(
           type: String, // 'A', 'B', 'C', 'D' or empty/null
           default: null,
         },
+        userCode: {
+          type: String,
+          default: '',
+        },
+        language: {
+          type: String,
+          default: '',
+        },
+        attempted: {
+          type: Boolean,
+          default: false,
+        },
         correctAnswer: {
-          type: String, // 'A', 'B', 'C', 'D' (which we generate or assign for validation)
-          required: true,
+          type: String,
+          default: '',
         },
         isCorrect: {
           type: Boolean,

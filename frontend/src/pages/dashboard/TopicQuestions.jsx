@@ -8,6 +8,7 @@ import Sidebar from '../../components/dashboard/Sidebar';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorMessage from '../../components/ErrorMessage';
 import { ArrowLeft } from 'lucide-react';
+import QuestionLinks from '../../components/QuestionLinks';
 
 const diffColors = {
   Easy:   'bg-emerald-500/10 text-emerald-400',
@@ -150,7 +151,7 @@ export default function TopicQuestions() {
                       <th className="px-6 py-4">Difficulty</th>
                       <th className="px-6 py-4">Acceptance</th>
                       {isAuthenticated && <th className="px-6 py-4 text-center">Solved</th>}
-                      <th className="px-6 py-4 text-center">LeetCode</th>
+                      <th className="px-6 py-4 text-center">Practice Links</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -207,21 +208,10 @@ export default function TopicQuestions() {
                             </td>
                           )}
 
-                          {/* LeetCode Link */}
-                          <td className="px-6 py-4 text-center">
-                            {q.leetcodeUrl ? (
-                              <a
-                                href={q.leetcodeUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-gray-500 hover:text-[#FF7A00] transition inline-block text-xs font-bold"
-                              >
-                                View on LeetCode →
-                              </a>
-                            ) : (
-                              <span className="text-gray-700">-</span>
-                            )}
-                          </td>
+                           {/* LeetCode Link */}
+                           <td className="px-6 py-4 text-center">
+                             <QuestionLinks question={q} />
+                           </td>
                         </tr>
                       );
                     })}

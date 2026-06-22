@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { updateSolvedQuestions, updateBookmarks } from '../store/authSlice';
 import apiClient from '../api/axios';
+import QuestionLinks from '../components/QuestionLinks';
 
 /**
  * Capitalizes company name cleanly (e.g. goldman-sachs -> Goldman Sachs).
@@ -223,7 +224,7 @@ function CompanyPage() {
                       <th className="px-6 py-4 text-center">Bookmark</th>
                     </>
                   )}
-                  <th className="px-6 py-4 text-center">LeetCode</th>
+                  <th className="px-6 py-4 text-center">Practice Links</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-900">
@@ -330,19 +331,7 @@ function CompanyPage() {
 
                       {/* External Leetcode Link */}
                       <td className="px-6 py-4 text-center">
-                        {q.leetcodeUrl ? (
-                          <a
-                            href={q.leetcodeUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-slate-500 hover:text-[#FFB800] transition inline-block"
-                            title="Open in Leetcode"
-                          >
-                            &#8599;
-                          </a>
-                        ) : (
-                          <span className="text-slate-700">-</span>
-                        )}
+                        <QuestionLinks question={q} />
                       </td>
                     </tr>
                   );

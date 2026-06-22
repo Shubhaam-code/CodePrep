@@ -17,6 +17,7 @@ import Roadmap       from './pages/dashboard/Roadmap';
 import History       from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
 import PracticeWorkspace from './pages/dashboard/PracticeWorkspace';
+import Playground       from './pages/dashboard/Playground';
 
 // Redirect logged-in users away from auth pages
 const PublicOnlyRoute = () => {
@@ -54,7 +55,8 @@ export default function App() {
           <Route path="/dashboard/mock"       element={<MockExam />} />
           <Route path="/dashboard/arena"      element={<Arena />} />
           <Route path="/dashboard/roadmap"    element={<Roadmap />} />
-          <Route path="/dashboard/history"    element={<History />} />
+          <Route path="/dashboard/history"      element={<History />} />
+          <Route path="/dashboard/playground"   element={<Playground />} />
           <Route path="/dashboard/practice/:questionId" element={<PracticeWorkspace />} />
           
           {/* Company-specific Page */}

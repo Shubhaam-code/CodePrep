@@ -59,6 +59,45 @@ router.get('/topic/:topicName', async (req, res) => {
 });
 
 /**
+ * @route   GET /api/questions/:leetcodeId/links
+ * @desc    Find question by leetcodeId and auto-generate alternative links from title
+ */
+router.get('/:leetcodeId/links', async (req, res) => {
+  try {
+    const leetcodeId = parseInt(req.params.leetcodeId, 10);
+    if (isNaN(leetcodeId)) {
+      return res.status(400).json({ message: 'Invalid LeetCode ID' });
+    }
+
+    const question = await Question.findOne({ leetcodeId });
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    const slug = question.title.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, '-');
+
+    const gfgUrl = `https://www.geeksforgeeks.org/problems/${slug}`;
+    const neetcodeUrl = `https://neetcode.io/problems/${slug}`;
+    const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(question.title + ' leetcode solution')}`;
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(question.title + ' leetcode solution site:geeksforgeeks.org OR site:neetcode.io')}`;
+
+    res.status(200).json({
+      isPremium: question.isPremium || false,
+      leetcodeUrl: question.leetcodeUrl || '',
+      gfgUrl,
+      neetcodeUrl,
+      youtubeUrl,
+      googleUrl
+    });
+  } catch (error) {
+    console.error('Error fetching alternative links:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
  * @route   GET /api/questions/:id
  * @desc    Get question by ID
  */

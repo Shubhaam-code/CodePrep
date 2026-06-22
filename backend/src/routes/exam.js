@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const fetch = require('node-fetch');
 const authMiddleware = require('../middleware/auth');
 const ExamSession = require('../models/ExamSession');
 const CompanyQuestion = require('../models/CompanyQuestion');
@@ -56,15 +57,13 @@ router.post('/start', async (req, res) => {
     const shuffled = [...validQuestions].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, Math.min(countNum, shuffled.length));
 
-    // 3. Assign random correct answers A-D to each question in DB session
-    const answers = ['A', 'B', 'C', 'D'];
+    // 3. Initialize question details for code submission
     const examQuestions = selected.map(q => {
-      const correct = answers[Math.floor(Math.random() * answers.length)];
       return {
         questionId: q._id,
-        correctAnswer: correct,
-        userAnswer: null,
-        isCorrect: false
+        userCode: '',
+        language: '',
+        attempted: false
       };
     });
 
@@ -87,13 +86,13 @@ router.post('/start', async (req, res) => {
 
     await session.save();
 
-    // 6. Return response to client without exposing correct answers
+    // 6. Return response to client with leetcodeId
     const clientQuestions = selected.map(q => ({
       _id: q._id,
+      leetcodeId: q.leetcodeId,
       title: q.title,
       difficulty: q.difficulty,
-      leetcodeUrl: q.leetcodeUrl,
-      options: defaultOptions
+      leetcodeUrl: q.leetcodeUrl
     }));
 
     res.status(201).json({
@@ -129,27 +128,36 @@ router.post('/submit/:examId', async (req, res) => {
       return res.status(400).json({ message: 'Exam session is already completed or abandoned' });
     }
 
-    // Convert map to format if needed
+    // Convert map or array to standard submissions map
     let submissions = {};
     if (Array.isArray(answers)) {
       answers.forEach(a => {
-        submissions[a.questionId.toString()] = a.userAnswer;
+        submissions[a.questionId.toString()] = {
+          userCode: a.userCode || '',
+          language: a.language || '',
+          attempted: !!a.attempted
+        };
       });
-    } else if (typeof answers === 'object') {
-      // Map format
+    } else if (typeof answers === 'object' && answers !== null) {
       Object.keys(answers).forEach(qId => {
-        submissions[qId] = answers[qId];
+        const item = answers[qId];
+        submissions[qId] = {
+          userCode: typeof item === 'object' ? item.userCode : '',
+          language: typeof item === 'object' ? item.language : '',
+          attempted: typeof item === 'object' ? !!item.attempted : false
+        };
       });
     }
 
-    // Grade each question
+    // Grade each question based on attempted status
     let score = 0;
     session.questions.forEach(q => {
       const qIdStr = q.questionId.toString();
-      const userAns = submissions[qIdStr] || null;
-      q.userAnswer = userAns;
-      q.isCorrect = userAns !== null && userAns === q.correctAnswer;
-      if (q.isCorrect) {
+      const sub = submissions[qIdStr] || { userCode: '', language: '', attempted: false };
+      q.userCode = sub.userCode;
+      q.language = sub.language;
+      q.attempted = sub.attempted;
+      if (q.attempted) {
         score++;
       }
     });
@@ -178,9 +186,9 @@ router.post('/submit/:examId', async (req, res) => {
         const sub = new Submission({
           userId: session.userId,
           questionId: q.questionId,
-          code: `Mock Exam Submission (Option ${q.userAnswer || 'None'})`,
-          language: 'Multiple',
-          status: q.isCorrect ? 'passed' : 'failed',
+          code: q.userCode || 'Skipped',
+          language: q.language || 'Plain Text',
+          status: q.attempted ? 'passed' : 'failed',
           type: 'mock',
           streakDay: currentStreak
         });
@@ -244,17 +252,17 @@ router.get('/result/:examId', async (req, res) => {
       const detail = q.questionId;
       return {
         questionId: detail ? detail._id : q.questionId,
+        leetcodeId: detail ? detail.leetcodeId : null,
         title: detail ? detail.title : 'Unknown Question',
         difficulty: detail ? detail.difficulty : 'Easy',
         leetcodeUrl: detail ? detail.leetcodeUrl : null,
-        userAnswer: q.userAnswer,
-        correctAnswer: q.correctAnswer,
-        isCorrect: q.isCorrect,
-        options: defaultOptions
+        userCode: q.userCode || '',
+        language: q.language || '',
+        attempted: !!q.attempted
       };
     });
 
-    // Compile difficulty breakdown stats
+    // Compile difficulty breakdown stats based on attempted status
     const breakdown = {
       Easy: { solved: 0, total: 0 },
       Medium: { solved: 0, total: 0 },
@@ -265,7 +273,7 @@ router.get('/result/:examId', async (req, res) => {
       const diff = q.difficulty; // 'Easy', 'Medium', 'Hard'
       if (breakdown[diff]) {
         breakdown[diff].total++;
-        if (q.isCorrect) {
+        if (q.attempted) {
           breakdown[diff].solved++;
         }
       }
@@ -341,6 +349,79 @@ router.delete('/history/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting single exam history:', error);
     res.status(500).json({ message: 'Server error deleting exam history' });
+  }
+});
+
+/**
+ * @route   GET /api/exam/question/:leetcodeId
+ * @desc    Get detailed question content from Alpha API or local cache
+ */
+router.get('/question/:leetcodeId', async (req, res) => {
+  try {
+    const leetcodeId = parseInt(req.params.leetcodeId, 10);
+    if (isNaN(leetcodeId)) {
+      return res.status(400).json({ message: 'Invalid LeetCode ID' });
+    }
+
+    const question = await Question.findOne({ leetcodeId });
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    const titleSlug = question.title.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+
+    const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+    const isCacheValid = question.contentFetchedAt && (new Date() - question.contentFetchedAt < CACHE_TTL);
+
+    let content = question.fullContent || '';
+    let exampleTestcases = question.exampleTestcases || '';
+    let hints = question.hints || [];
+
+    if (!isCacheValid) {
+      try {
+        const response = await fetch(`https://alfa-leetcode-api.onrender.com/select?titleSlug=${titleSlug}`, {
+          headers: { 'User-Agent': 'node-fetch' }
+        });
+        if (response.ok) {
+          const apiData = await response.json();
+          if (apiData && !apiData.errors) {
+            content = apiData.content || '';
+            exampleTestcases = apiData.exampleTestcases || '';
+            hints = apiData.hints || [];
+
+            // Update cached fields in Question model
+            question.fullContent = content;
+            question.exampleTestcases = exampleTestcases;
+            question.hints = hints;
+            question.contentFetchedAt = new Date();
+            await question.save();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch from Alfa LeetCode API, using cache:', err.message);
+      }
+    }
+
+    // Fallback description if everything fails and we have no content
+    if (!content) {
+      content = `<p>No description available. Please practice this question directly on <a href="${question.leetcodeUrl || '#'}" target="_blank" class="text-[#FF7A00] underline">LeetCode</a>.</p>`;
+    }
+
+    res.status(200).json({
+      title: question.title,
+      difficulty: question.difficulty,
+      content,
+      exampleTestcases,
+      hints,
+      isPremium: question.isPremium || false,
+      leetcodeUrl: question.leetcodeUrl || ''
+    });
+  } catch (error) {
+    console.error('Error in exam question API:', error);
+    res.status(500).json({ message: 'Server error retrieving exam question' });
   }
 });
 

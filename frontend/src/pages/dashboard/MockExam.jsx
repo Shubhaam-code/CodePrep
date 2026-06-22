@@ -1,65 +1,85 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ClipboardList, Play, ArrowRight, AlertTriangle, Timer, CheckCircle, 
-  XCircle, Share2, RefreshCcw, BookOpen, ExternalLink, ChevronLeft, ChevronRight
+  ClipboardList, Play, ArrowRight, AlertTriangle, CheckCircle, 
+  XCircle, RefreshCcw, BookOpen, ExternalLink, ChevronLeft, 
+  ChevronRight, Laptop, HelpCircle, ShieldAlert, Award
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../../api/axios';
-import { startExam, submitExam, getResult } from '../../api/exam';
-
 import Sidebar from '../../components/dashboard/Sidebar';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorMessage from '../../components/ErrorMessage';
+import QuestionContent from '../../components/exam/QuestionContent';
+import CodeEditor from '../../components/exam/CodeEditor';
+import ExamTimer from '../../components/exam/ExamTimer';
 
-const diffTimes = {
-  Easy: '60 mins',
-  Medium: '90 mins',
-  Hard: '120 mins',
-  Mixed: '90 mins'
-};
-
-const diffColors = {
-  Easy: 'text-green-400 bg-green-400/10 border-green-500/20',
-  Medium: 'text-yellow-400 bg-yellow-400/10 border-yellow-500/20',
-  Hard: 'text-red-400 bg-red-400/10 border-red-500/20',
+const STARTER_CODES = {
+  javascript: `/**
+ * @param {number[]} nums
+ * @return {number}
+ */
+var solution = function() {
+  // Write your solution here
+};`,
+  python: `class Solution:
+  def solution(self):
+    # Write your solution here
+    pass`,
+  java: `class Solution {
+    public int solution() {
+        // Write your solution here
+        return 0;
+    }
+}`,
+  cpp: `class Solution {
+public:
+    int solution() {
+        // Write your solution here
+        return 0;
+    }
+};`
 };
 
 export default function MockExam() {
   const SIDEBAR_W = 224;
   const navigate = useNavigate();
 
-  // Screen controls: 'setup' | 'active' | 'results'
+  // Screen state: 'setup' | 'active' | 'results'
   const [screen, setScreen] = useState('setup');
-  
-  // Setup inputs
+
+  // Setup options
   const [company, setCompany] = useState('');
   const [difficulty, setDifficulty] = useState('Medium');
-  const [count, setCount] = useState(10);
+  const [count, setCount] = useState(5);
 
   // Active Exam state
   const [examId, setExamId] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState({}); // { [qId]: 'A'|'B'|'C'|'D' }
-  const [markedForReview, setMarkedForReview] = useState({}); // { [qId]: boolean }
-  const [timeLeft, setTimeLeft] = useState(0); // in seconds
-  const [tabWarnings, setTabWarnings] = useState(0);
-  const [showWarningModal, setShowWarningModal] = useState(false);
-  const [showFsWarning, setShowFsWarning] = useState(false);
-  const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
+  const [codes, setCodes] = useState({}); // { [idx]: code }
+  const [languages, setLanguages] = useState({}); // { [idx]: lang }
+  const [warnings, setWarnings] = useState(0);
+  const [toast, setToast] = useState('');
+  const [showFsModal, setShowFsModal] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(3600); // placeholder in seconds
 
   // Results state
-  const [resultId, setResultId] = useState(null);
   const [resultsData, setResultsData] = useState(null);
-  const [copySuccess, setCopySuccess] = useState(false);
 
-  // Timer Ref
-  const timerRef = useRef(null);
+  // Floating toast notifier helper
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => {
+      setToast('');
+    }, 4000);
+  };
 
-  // 1. Fetch available companies
+  // Fetch available companies
   const { data: companies, isLoading: loadingCos } = useQuery({
     queryKey: ['companies'],
     queryFn: async () => {
@@ -69,25 +89,44 @@ export default function MockExam() {
     staleTime: 5 * 60 * 1000
   });
 
-  // Set default company when companies load
+  // Set default company when list loads
   useEffect(() => {
     if (companies && companies.length > 0 && !company) {
       setCompany(companies[0]);
     }
   }, [companies]);
 
-  // 2. Tab Visibility Switch Monitor (Security)
+  // Request Fullscreen helper
+  const enterFullscreen = async () => {
+    try {
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        await el.requestFullscreen();
+      }
+    } catch (e) {
+      console.warn('Fullscreen request blocked:', e);
+    }
+  };
+
+  // Exit Fullscreen helper
+  const exitFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(err => console.warn(err));
+    }
+  };
+
+  // Security Visibility tab monitoring
   useEffect(() => {
     if (screen !== 'active') return;
 
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        setTabWarnings(prev => {
+        setWarnings(prev => {
           const next = prev + 1;
           if (next >= 3) {
-            triggerAutoSubmit('tab_switches');
+            triggerAutoSubmit(true);
           } else {
-            setShowWarningModal(true);
+            showToast(`Warning ${next}/3: Don't switch tabs!`);
           }
           return next;
         });
@@ -96,138 +135,128 @@ export default function MockExam() {
 
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [screen, examId, answers]);
+  }, [screen, examId, codes, languages]);
 
-  // 3. Fullscreen escape detector
+  // Fullscreen exit tracking
   useEffect(() => {
     if (screen !== 'active') return;
 
     const handleFsChange = () => {
       if (!document.fullscreenElement) {
-        setShowFsWarning(true);
-      } else {
-        setShowFsWarning(false);
+        // Only trigger warning if we are still active in the exam
+        setWarnings(prev => {
+          const next = prev + 1;
+          if (next >= 3) {
+            triggerAutoSubmit(true);
+          } else {
+            showToast(`Warning ${next}/3: Exiting fullscreen is restricted!`);
+            setShowFsModal(true);
+          }
+          return next;
+        });
       }
     };
 
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, [screen]);
+  }, [screen, examId, codes, languages]);
 
-  // 4. Timer interval
+  // Autosave and persistence recovery
   useEffect(() => {
-    if (screen !== 'active') return;
+    if (!examId || screen !== 'active') return;
 
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          triggerAutoSubmit('timeout');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timerRef.current);
-  }, [screen]);
-
-  // Load autosaved progress
-  useEffect(() => {
-    if (!examId) return;
-    const saved = localStorage.getItem(`mock_exam_${examId}`);
+    const localKey = `mock_exam_${examId}`;
+    const saved = localStorage.getItem(localKey);
     if (saved) {
       try {
-        const { savedAnswers, savedMarked, savedTime } = JSON.parse(saved);
-        if (savedAnswers) setAnswers(savedAnswers);
-        if (savedMarked) setMarkedForReview(savedMarked);
-        if (savedTime && savedTime > 0) setTimeLeft(savedTime);
+        const { savedIdx, savedLangs } = JSON.parse(saved);
+        if (savedIdx !== undefined) setCurrentIdx(savedIdx);
+        if (savedLangs !== undefined) setLanguages(savedLangs);
       } catch (err) {
-        console.error('Error loading saved exam session:', err);
+        console.error('Error recovering autosaved exam data:', err);
       }
     }
   }, [examId]);
 
-  // Save progress changes (Autosave)
+  // Save current question index and language mapping on change
   useEffect(() => {
     if (!examId || screen !== 'active') return;
+
     localStorage.setItem(`mock_exam_${examId}`, JSON.stringify({
-      savedAnswers: answers,
-      savedMarked: markedForReview,
-      savedTime: timeLeft
+      savedIdx: currentIdx,
+      savedLangs: languages
     }));
-  }, [examId, answers, markedForReview, timeLeft, screen]);
-
-  // Helper: Request Fullscreen
-  const enterFullscreen = async () => {
-    try {
-      const el = document.documentElement;
-      if (el.requestFullscreen) {
-        await el.requestFullscreen();
-      }
-    } catch (e) {
-      console.warn('Fullscreen entry blocked:', e);
-    }
-  };
-
-  // Helper: Exit Fullscreen
-  const exitFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(err => console.warn(err));
-    }
-  };
+  }, [examId, currentIdx, languages, screen]);
 
   // Actions
   const handleStartExam = async () => {
     if (!company) return;
     try {
-      const data = await startExam(company, difficulty, count);
-      setExamId(data.examId);
-      setQuestions(data.questions);
-      setTimeLeft(data.timeLimit * 60);
+      const res = await apiClient.post('/api/exam/start', {
+        company,
+        difficulty,
+        count
+      });
+
+      const { examId: id, questions: qs, timeLimit } = res.data;
+      setExamId(id);
+      setQuestions(qs);
+      setTimeLeft(timeLimit * 60);
       setCurrentIdx(0);
-      setAnswers({});
-      setTabWarnings(0);
-      setShowWarningModal(false);
-      setShowFsWarning(false);
-      setScreen('active');
+      setWarnings(0);
+      setShowFsModal(false);
+      setShowSubmitModal(false);
+      setShowHint(false);
       
-      // Request lock
+      // Initialize states
+      const initialCodes = {};
+      const initialLangs = {};
+      qs.forEach((_, index) => {
+        initialLangs[index] = 'javascript';
+        initialCodes[index] = STARTER_CODES.javascript;
+      });
+      setCodes(initialCodes);
+      setLanguages(initialLangs);
+
+      setScreen('active');
       await enterFullscreen();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to initialize exam session.');
+      alert(err.response?.data?.message || 'Failed to start exam session.');
     }
   };
 
-  const triggerAutoSubmit = async (reason = 'user') => {
+  const triggerAutoSubmit = async (forced = false) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    clearInterval(timerRef.current);
     exitFullscreen();
 
-    try {
-      // Format answers into array format expected by backend
-      const formattedAnswers = Object.keys(answers).map(qId => ({
-        questionId: qId,
-        userAnswer: answers[qId]
-      }));
+    // Prepare format for submission
+    const submissionAnswers = questions.map((q, index) => {
+      const code = codes[index] || '';
+      const lang = languages[index] || 'javascript';
+      const isAttempted = code.trim() !== '' && code !== STARTER_CODES[lang];
+      return {
+        questionId: q._id,
+        userCode: code,
+        language: lang,
+        attempted: isAttempted
+      };
+    });
 
-      const submitRes = await submitExam(examId, formattedAnswers);
-      const results = await getResult(examId);
-      
-      setResultsData(results);
-      setResultId(examId);
+    try {
+      await apiClient.post(`/api/exam/submit/${examId}`, { answers: submissionAnswers });
+      const res = await apiClient.get(`/api/exam/result/${examId}`);
+      setResultsData(res.data);
       setScreen('results');
     } catch (err) {
-      console.error('Error submitting exam:', err);
-      alert('An error occurred during submission. Retrying results fetching...');
-      // Try fetching anyway if session was auto-completed
+      console.error('Error submitting exam answers:', err);
+      // Fallback: try fetching results again
       try {
-        const results = await getResult(examId);
-        setResultsData(results);
-        setResultId(examId);
+        const res = await apiClient.get(`/api/exam/result/${examId}`);
+        setResultsData(res.data);
         setScreen('results');
       } catch (nested) {
+        alert('Submission failed. Returning to setup.');
         setScreen('setup');
       }
     } finally {
@@ -235,61 +264,86 @@ export default function MockExam() {
     }
   };
 
-  const handleShare = () => {
-    if (!resultsData) return;
-    const text = `I just finished the ${resultsData.company} Mock Assessment on CodePrep AI!\nScore: ${resultsData.score}/${resultsData.totalQuestions} Correct (${Math.round((resultsData.score / resultsData.totalQuestions) * 100)}%)\nDifficulty: ${resultsData.difficulty}`;
-    navigator.clipboard.writeText(text).then(() => {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    });
-  };
-
-  const formatTimer = (totalSeconds) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
   const currentQ = questions[currentIdx];
+  const currentLang = languages[currentIdx] || 'javascript';
+  const currentDefaultCode = STARTER_CODES[currentLang];
 
-  // Render Screens
+  const handleCodeChange = (newCode) => {
+    setCodes(prev => ({
+      ...prev,
+      [currentIdx]: newCode
+    }));
+  };
+
+  const handleLanguageChange = (newLang) => {
+    setLanguages(prev => ({
+      ...prev,
+      [currentIdx]: newLang
+    }));
+    setCodes(prev => ({
+      ...prev,
+      [currentIdx]: STARTER_CODES[newLang]
+    }));
+  };
+
+  const handleResetCode = () => {
+    setCodes(prev => ({
+      ...prev,
+      [currentIdx]: STARTER_CODES[currentLang]
+    }));
+    // Remove individual localStorage key to force Monaco redraw
+    localStorage.removeItem(`exam_code_${examId}_${currentIdx}`);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0B0B0F] flex">
+    <div className="min-h-screen bg-[#0B0B0F] flex text-slate-200">
       {screen === 'setup' && <Sidebar />}
 
+      {/* Warning Toast Alerts */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }} 
+            animate={{ opacity: 1, y: 20 }} 
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-0 left-1/2 transform -translate-x-1/2 z-55 bg-rose-950 border border-rose-500/30 text-rose-400 font-bold px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs tracking-wider"
+          >
+            <ShieldAlert size={16} className="text-rose-500 animate-pulse" />
+            <span>{toast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main 
-        className="flex-1 overflow-y-auto" 
+        className="flex-1 overflow-y-auto flex flex-col"
         style={screen === 'setup' ? { marginLeft: SIDEBAR_W } : { marginLeft: 0 }}
       >
         {/* SCREEN 1: SETUP */}
         {screen === 'setup' && (
-          <div className="max-w-4xl mx-auto p-6 space-y-6">
-            <div className="sticky top-0 z-30 bg-[#0B0B0F]/80 backdrop-blur-xl border-b border-white/5 py-4 flex items-center justify-between">
-              <div>
-                <h1 className="text-white font-bold text-lg flex items-center gap-2">
-                  <ClipboardList size={18} className="text-[#FF7A00]" />
-                  Mock Assessment
-                </h1>
-                <p className="text-gray-500 text-xs">Simulate top-tier company online assessment coding rounds</p>
-              </div>
+          <div className="max-w-4xl mx-auto p-6 space-y-6 w-full py-12">
+            <div>
+              <h1 className="text-white font-extrabold text-2xl flex items-center gap-2">
+                <ClipboardList size={22} className="text-[#FF7A00]" />
+                Mock Assessment Round
+              </h1>
+              <p className="text-gray-500 text-xs mt-1">Practice realistic coding rounds with actual LeetCode questions and Monaco editor workflow.</p>
             </div>
 
-            {/* Config Card */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/[0.02] border border-white/8 rounded-3xl p-6 shadow-xl">
-              {/* Form columns (2/3) */}
+            {/* Config panel */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/[0.01] border border-white/5 rounded-3xl p-6 shadow-2xl">
               <div className="md:col-span-2 space-y-4">
-                <h2 className="text-white font-bold text-sm border-b border-white/5 pb-2">Exam Configuration</h2>
+                <h2 className="text-white font-black text-sm uppercase tracking-wider border-b border-white/5 pb-2">Exam Parameters</h2>
                 
-                {/* Company Dropdown */}
+                {/* Company Select */}
                 <div className="space-y-1">
-                  <label className="text-xs text-gray-400 font-semibold">Select Company</label>
+                  <label className="text-xs text-gray-400 font-semibold">Target Company</label>
                   {loadingCos ? (
                     <div className="h-10 bg-white/5 animate-pulse rounded-xl" />
                   ) : (
                     <select
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
-                      className="w-full bg-[#0D0D12] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white capitalize outline-none focus:border-[#FF7A00]"
+                      className="w-full bg-[#0D0D12] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white capitalize outline-none focus:border-[#FF7A00] transition"
                     >
                       {companies?.map(c => (
                         <option key={c} value={c}>{c}</option>
@@ -298,15 +352,15 @@ export default function MockExam() {
                   )}
                 </div>
 
-                {/* Difficulty tabs */}
+                {/* Difficulty */}
                 <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400 font-semibold block">Select Difficulty</label>
-                  <div className="flex bg-white/5 border border-white/10 p-1 rounded-xl w-max">
+                  <label className="text-xs text-gray-400 font-semibold block">Difficulty Level</label>
+                  <div className="flex bg-white/5 border border-white/5 p-1 rounded-xl w-max">
                     {['Easy', 'Medium', 'Hard', 'Mixed'].map(d => (
                       <button
                         key={d}
                         onClick={() => setDifficulty(d)}
-                        className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                        className={`cursor-pointer px-4.5 py-2 text-xs font-bold rounded-lg transition-all ${
                           difficulty === d 
                             ? 'bg-[#FF7A00] text-black font-extrabold shadow'
                             : 'text-gray-400 hover:text-white'
@@ -320,41 +374,41 @@ export default function MockExam() {
 
                 {/* Question count */}
                 <div className="space-y-1.5">
-                  <label className="text-xs text-gray-400 font-semibold block">Number of Questions</label>
-                  <div className="flex bg-white/5 border border-white/10 p-1 rounded-xl w-max">
-                    {[5, 10, 15, 20].map(num => (
+                  <label className="text-xs text-gray-400 font-semibold block">Question Pool Count</label>
+                  <div className="flex bg-white/5 border border-white/5 p-1 rounded-xl w-max">
+                    {[2, 5, 10].map(num => (
                       <button
                         key={num}
                         onClick={() => setCount(num)}
-                        className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                        className={`cursor-pointer px-5 py-2 text-xs font-bold rounded-lg transition-all ${
                           count === num 
-                            ? 'bg-white/10 text-white font-extrabold border border-white/20'
+                            ? 'bg-white/10 text-white font-extrabold border border-white/15'
                             : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        {num} Qs
+                        {num} Questions
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* Time card (1/3) */}
-              <div className="bg-[#0D0D12]/50 border border-[#FF7A00]/20 rounded-2xl p-5 flex flex-col justify-between">
+              {/* Time card info */}
+              <div className="bg-[#0D0D12]/60 border border-[#FF7A00]/25 rounded-2xl p-5 flex flex-col justify-between shadow-lg">
                 <div className="space-y-2">
-                  <div className="w-10 h-10 rounded-xl bg-[#FF7A00]/10 flex items-center justify-center border border-[#FF7A00]/25">
-                    <Timer size={18} className="text-[#FF7A00]" />
+                  <div className="w-10 h-10 rounded-xl bg-[#FF7A00]/10 flex items-center justify-center border border-[#FF7A00]/20">
+                    <Laptop size={18} className="text-[#FF7A00]" />
                   </div>
-                  <h3 className="text-white font-bold text-sm mt-3">Allotted Duration</h3>
+                  <h3 className="text-white font-bold text-sm mt-3">Duration Allotment</h3>
                   <p className="text-3xl font-extrabold text-white tracking-tight">
-                    {diffTimes[difficulty]}
+                    {difficulty === 'Easy' ? '60 mins' : difficulty === 'Medium' ? '90 mins' : difficulty === 'Hard' ? '120 mins' : '90 mins'}
                   </p>
-                  <p className="text-[10px] text-gray-500">Based on selected difficulty</p>
+                  <p className="text-[10px] text-gray-500">Auto-allocated based on difficulty choice</p>
                 </div>
 
                 <button 
                   onClick={handleStartExam}
-                  className="w-full mt-6 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:opacity-90 shadow shadow-[#FF7A00]/10 transition-all"
+                  className="w-full mt-6 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity shadow shadow-[#FF7A00]/10"
                 >
                   <Play size={12} className="fill-black" />
                   Start Exam →
@@ -362,24 +416,18 @@ export default function MockExam() {
               </div>
             </div>
 
-            {/* Info warnings cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5">
-                <span className="text-red-400 font-bold text-xs uppercase tracking-wider block mb-1">⚠️ Fullscreen & Security</span>
+            {/* Info warnings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-5">
+                <span className="text-red-400 font-bold text-xs uppercase tracking-wider block mb-1">🔒 Fullscreen Security & Monitoring</span>
                 <p className="text-gray-500 text-xs leading-relaxed">
-                  Switching tabs or exiting fullscreen mode is monitored. Exceeding 3 tab closures auto-submits.
+                  Visits/switches outside the browser window, tab navigation, or escaping fullscreen is locked and logged. Warnings appear on infraction; 3 infractions auto-submits.
                 </p>
               </div>
-              <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-2xl p-5">
-                <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider block mb-1">⏱️ Time Limit</span>
+              <div className="bg-[#FF7A00]/5 border border-[#FF7A00]/10 rounded-2xl p-5">
+                <span className="text-[#FFB800] font-bold text-xs uppercase tracking-wider block mb-1">⏳ Time Limit Enforcement</span>
                 <p className="text-gray-500 text-xs leading-relaxed">
-                  The test runs on a hard timer. When time runs out, your session and current inputs submit automatically.
-                </p>
-              </div>
-              <div className="bg-[#FF7A00]/5 border border-[#FF7A00]/20 rounded-2xl p-5">
-                <span className="text-[#FFB800] font-bold text-xs uppercase tracking-wider block mb-1">📊 Assessment Summary</span>
-                <p className="text-gray-500 text-xs leading-relaxed">
-                  Detailed analytics, correct answers, time spent, and target practice recommendations provided post-test.
+                  Mock examinations must be submitted inside the time limit. Upon timeout, inputs save and submit automatically.
                 </p>
               </div>
             </div>
@@ -388,230 +436,197 @@ export default function MockExam() {
 
         {/* SCREEN 2: ACTIVE EXAM */}
         {screen === 'active' && questions.length > 0 && (
-          <div className="min-h-screen bg-[#09090C] text-white flex flex-col">
-            {/* Header top bar */}
-            <header className="sticky top-0 z-40 bg-[#0B0B0F] border-b border-white/5 px-6 py-3 flex items-center justify-between">
+          <div className="h-screen w-screen flex flex-col bg-[#09090C] overflow-hidden relative select-none">
+            {/* Top Bar Header */}
+            <header className="h-14 bg-[#0B0B0F] border-b border-white/5 px-6 flex items-center justify-between shrink-0 z-40 select-none">
               <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#FF7A00] block">Timed Session</span>
-                <h2 className="text-sm font-bold text-white capitalize">{company} Mock Assessment</h2>
+                <span className="text-[9px] font-black uppercase tracking-widest text-[#FF7A00] block leading-none mb-0.5">Mock Test</span>
+                <h2 className="text-xs font-extrabold text-white capitalize leading-none">{company} Code OA</h2>
               </div>
 
-              {/* Centered Timer */}
-              <div className="flex items-center gap-2 bg-white/5 border border-white/8 px-4 py-1.5 rounded-full font-mono font-bold text-sm">
-                <Timer size={14} className={timeLeft < 300 ? 'text-red-500 animate-pulse' : 'text-gray-400'} />
-                <span className={timeLeft < 300 ? 'text-red-500' : 'text-white'}>
-                  {formatTimer(timeLeft)}
-                </span>
-              </div>
+              {/* Exam timer component */}
+              <ExamTimer 
+                timeLimit={timeLeft} 
+                onExpire={() => triggerAutoSubmit(true)} 
+              />
 
-              {/* Progress Count */}
-              <div className="text-xs font-semibold text-gray-400 bg-white/5 px-3 py-1.5 rounded-lg border border-white/8">
-                Question {currentIdx + 1} of {questions.length}
+              {/* Progress and status */}
+              <div className="flex items-center gap-3">
+                {warnings > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-1 bg-red-500/10 border border-red-500/25 text-red-400 rounded-lg animate-pulse">
+                    ⚠️ Warning {warnings}/3
+                  </span>
+                )}
+                <div className="text-xs font-semibold text-gray-400 bg-white/5 px-3 py-1.5 rounded-lg border border-white/8">
+                  Q {currentIdx + 1} of {questions.length}
+                </div>
               </div>
             </header>
 
-            {/* Split Workspace */}
-            <div className="flex-1 flex overflow-hidden">
-              {/* Question Area (Left) */}
-              <div className="flex-1 p-6 overflow-y-auto space-y-6">
-                
-                {/* Meta details */}
-                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-                  <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg border ${diffColors[currentQ.difficulty] || ''}`}>
+            {/* Split layout */}
+            <div className="flex-1 flex min-h-0 overflow-hidden flex-col md:flex-row">
+              {/* LEFT SIDE: Question Description */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 border-b md:border-b-0 md:border-r border-white/5 bg-[#09090C] flex flex-col">
+                <div className="flex items-center gap-3 border-b border-white/5 pb-4 shrink-0">
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-wider ${
+                    currentQ.difficulty === 'Easy' ? 'text-emerald-400 bg-emerald-400/5 border-emerald-500/20' :
+                    currentQ.difficulty === 'Medium' ? 'text-amber-400 bg-amber-400/5 border-amber-500/20' :
+                    'text-rose-400 bg-rose-400/5 border-rose-500/20'
+                  }`}>
                     {currentQ.difficulty}
                   </span>
-                  
+
                   {currentQ.leetcodeUrl && (
                     <a 
                       href={currentQ.leetcodeUrl} 
                       target="_blank" 
                       rel="noopener noreferrer" 
-                      className="text-xs text-gray-500 hover:text-[#FF7A00] flex items-center gap-1 transition-colors"
+                      className="text-[11px] font-semibold text-slate-500 hover:text-[#FF7A00] flex items-center gap-1 transition-colors select-all"
                     >
-                      View on LeetCode <ExternalLink size={10} />
+                      Original LeetCode <ExternalLink size={10} />
                     </a>
                   )}
                 </div>
 
-                {/* Title */}
-                <h1 className="text-xl sm:text-2xl font-extrabold text-white">
-                  {currentIdx + 1}. {currentQ.title}
-                </h1>
+                {/* Problem details */}
+                <div className="flex-1 min-h-0 space-y-4">
+                  <h1 className="text-lg sm:text-xl font-black text-white leading-tight">
+                    {currentIdx + 1}. {currentQ.title}
+                  </h1>
 
-                {/* Simulated Options */}
-                <div className="space-y-3 pt-2">
-                  <p className="text-xs text-gray-400 font-semibold mb-2">Select the most optimal runtime approach:</p>
-                  {currentQ.options?.map((opt) => {
-                    const isSelected = answers[currentQ._id] === opt.key;
-                    return (
-                      <button
-                        key={opt.key}
-                        onClick={() => setAnswers(prev => ({ ...prev, [currentQ._id]: opt.key }))}
-                        className={`cursor-pointer w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-4 ${
-                          isSelected 
-                            ? 'bg-[#FF7A00]/10 border-[#FF7A00] text-white' 
-                            : 'bg-white/[0.02] border-white/5 hover:border-white/15 text-gray-300'
-                        }`}
-                      >
-                        <span className={`w-6 h-6 rounded-lg font-bold flex items-center justify-center text-xs shrink-0 ${
-                          isSelected ? 'bg-[#FF7A00] text-black' : 'bg-white/5 text-gray-400'
-                        }`}>
-                          {opt.key}
-                        </span>
-                        <span className="text-xs leading-relaxed">{opt.text}</span>
-                      </button>
-                    );
-                  })}
+                  {/* HTML Content Fetcher */}
+                  <QuestionContent 
+                    leetcodeId={currentQ.leetcodeId} 
+                    title={currentQ.title} 
+                  />
                 </div>
 
-                {/* Navigation Actions */}
-                <div className="flex items-center justify-between border-t border-white/5 pt-6">
+                {/* Optional Hint toggler */}
+                <div className="pt-6 border-t border-white/5 shrink-0 space-y-3">
+                  <button
+                    onClick={() => setShowHint(prev => !prev)}
+                    className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    <HelpCircle size={13} />
+                    {showHint ? 'Hide Hints' : 'Reveal Hints'}
+                  </button>
+                  <AnimatePresence>
+                    {showHint && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }} 
+                        animate={{ opacity: 1, height: 'auto' }} 
+                        exit={{ opacity: 0, height: 0 }}
+                        className="bg-indigo-950/10 border border-indigo-500/10 p-3 rounded-xl text-xs text-indigo-300/80 leading-relaxed font-medium"
+                      >
+                        Utilize standard algorithm optimizations. Think about time complexity parameters relative to input limits.
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* RIGHT SIDE: Monaco Editor */}
+              <div className="flex-1 flex flex-col min-h-0 bg-[#0B0B0F]">
+                {/* Header configuration */}
+                <div className="h-12 border-b border-white/5 px-4 flex items-center justify-between shrink-0 select-none bg-[#09090C]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-gray-500">Language:</span>
+                    <select
+                      value={currentLang}
+                      onChange={(e) => handleLanguageChange(e.target.value)}
+                      className="bg-[#0E0E12] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-white outline-none cursor-pointer focus:border-[#FF7A00]"
+                    >
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="java">Java</option>
+                      <option value="cpp">C++</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleResetCode}
+                    className="cursor-pointer text-[10px] font-bold px-2.5 py-1 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition"
+                  >
+                    Reset Code
+                  </button>
+                </div>
+
+                {/* Monaco instance */}
+                <div className="flex-1 min-h-0">
+                  <CodeEditor 
+                    key={`${examId}_${currentIdx}`} // redraw Monaco on question changes
+                    language={currentLang}
+                    defaultCode={currentDefaultCode}
+                    examId={examId}
+                    questionIndex={currentIdx}
+                    onChange={handleCodeChange}
+                  />
+                </div>
+
+                {/* Workspace bottom action bar */}
+                <div className="h-16 border-t border-white/5 px-6 flex items-center justify-between shrink-0 bg-[#09090C] select-none">
                   <button
                     disabled={currentIdx === 0}
                     onClick={() => setCurrentIdx(prev => prev - 1)}
-                    className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                    className="cursor-pointer text-xs font-bold text-gray-500 hover:text-white disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
                   >
                     <ChevronLeft size={16} /> Previous
                   </button>
 
-                  <button
-                    onClick={() => setMarkedForReview(prev => ({ ...prev, [currentQ._id]: !prev[currentQ._id] }))}
-                    className={`cursor-pointer px-4 py-2 text-xs font-bold rounded-xl border transition-all ${
-                      markedForReview[currentQ._id]
-                        ? 'bg-indigo-500/10 border-indigo-500/35 text-indigo-400 font-bold'
-                        : 'bg-white/5 border-white/8 text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {markedForReview[currentQ._id] ? '★ Marked for Review' : '☆ Mark for Review'}
-                  </button>
-
                   {currentIdx === questions.length - 1 ? (
                     <button
-                      onClick={() => setShowSubmitConfirmModal(true)}
-                      className="cursor-pointer px-6 py-2.5 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-extrabold text-xs rounded-xl hover:opacity-90 transition-opacity"
+                      onClick={() => setShowSubmitModal(true)}
+                      className="cursor-pointer px-6 py-2.5 bg-gradient-to-r from-rose-600 to-[#FF7A00] text-white font-extrabold text-xs rounded-xl shadow-lg hover:opacity-90 transition-opacity"
                     >
-                      Finish Assessment
+                      Submit Exam
                     </button>
                   ) : (
                     <button
                       onClick={() => setCurrentIdx(prev => prev + 1)}
-                      className="flex items-center gap-1 text-xs font-semibold text-[#FF7A00] hover:text-white cursor-pointer"
+                      className="cursor-pointer px-6 py-2.5 bg-[#FF7A00] hover:bg-[#FF8C1A] text-black font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1"
                     >
-                      Next Question <ChevronRight size={16} />
+                      Save & Next <ChevronRight size={13} />
                     </button>
                   )}
                 </div>
               </div>
-
-              {/* Navigator Sidebar (Right) */}
-              <div className="w-64 bg-[#0B0B0F] border-l border-white/5 p-5 hidden md:flex flex-col justify-between overflow-y-auto shrink-0 select-none">
-                <div className="space-y-6">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Navigator</h3>
-                  
-                  {/* Grid */}
-                  <div className="grid grid-cols-4 gap-2">
-                    {questions.map((q, idx) => {
-                      const isAnswered = !!answers[q._id];
-                      const isMarked = !!markedForReview[q._id];
-                      const isActive = idx === currentIdx;
-
-                      let styleClasses = 'bg-white/5 text-gray-500 border border-transparent';
-                      if (isActive) {
-                        styleClasses = 'border-2 border-[#FF7A00] text-[#FFB800] bg-white/5';
-                      } else if (isMarked) {
-                        styleClasses = 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/25';
-                      } else if (isAnswered) {
-                        styleClasses = 'bg-green-500/10 text-green-400 border border-green-500/25';
-                      }
-
-                      return (
-                        <button
-                          key={q._id}
-                          onClick={() => setCurrentIdx(idx)}
-                          className={`cursor-pointer aspect-square rounded-xl text-xs font-bold transition-all flex items-center justify-center ${styleClasses}`}
-                        >
-                          {idx + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Status Legend Palette */}
-                  <div className="pt-4 border-t border-white/5 space-y-2">
-                    <span className="text-[9px] uppercase font-black text-gray-500 tracking-wider">Legend Colors</span>
-                    <div className="space-y-1.5 text-[10px] text-gray-400 font-semibold">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded bg-green-500/10 border border-green-500/25" />
-                        <span>Answered ({Object.values(answers).filter(Boolean).length})</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded bg-indigo-500/10 border border-indigo-500/25" />
-                        <span>Marked for Review ({Object.values(markedForReview).filter(Boolean).length})</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded bg-white/5 border border-transparent" />
-                        <span>Not Answered ({questions.length - Object.values(answers).filter(Boolean).length})</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 text-[10px] text-gray-500 leading-relaxed mt-4">
-                  🔐 Timed security is active. Exiting tab triggers immediate automatic submission.
-                </div>
-              </div>
             </div>
 
-            {/* Tab switch warning Modal */}
+            {/* Exit Fullscreen Modal Alert */}
             <AnimatePresence>
-              {showWarningModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                  <motion.div initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }} exit={{ opacity:0, scale:0.9 }}
-                    className="bg-[#0D0D12] border border-red-500/30 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative">
-                    <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
-                      <AlertTriangle size={20} className="text-red-500 animate-pulse" />
+              {showFsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }} 
+                    animate={{ opacity: 1, scale: 1 }} 
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-[#0D0D12] border border-yellow-500/30 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mx-auto mb-4 text-yellow-500">
+                      <AlertTriangle size={20} />
                     </div>
-                    <h3 className="text-white font-bold text-base mb-2">Security Warning!</h3>
+                    <h3 className="text-white font-bold text-base mb-2">Exited Fullscreen Mode!</h3>
                     <p className="text-gray-400 text-xs leading-relaxed mb-6">
-                      You switched tabs. This is warning <span className="text-red-500 font-bold">{tabWarnings} of 2</span>. 
-                      Exceeding 3 switches will auto-submit your exam!
-                    </p>
-                    <button 
-                      onClick={() => setShowWarningModal(false)}
-                      className="px-6 py-2 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-bold text-xs rounded-xl"
-                    >
-                      Return to Exam
-                    </button>
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>
-
-            {/* Exit Fullscreen warning overlay */}
-            <AnimatePresence>
-              {showFsWarning && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
-                  <motion.div initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }}
-                    className="bg-[#0D0D12] border border-yellow-500/30 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl">
-                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mx-auto mb-4">
-                      <AlertTriangle size={20} className="text-yellow-500" />
-                    </div>
-                    <h3 className="text-white font-bold text-base mb-2">Exited Fullscreen!</h3>
-                    <p className="text-gray-400 text-xs leading-relaxed mb-6">
-                      Please enter fullscreen mode again to continue the assessment.
+                      Assessments must be completed in fullscreen. Exiting is recorded as a warning infraction.
                     </p>
                     <div className="flex gap-3 justify-center">
                       <button 
-                        onClick={enterFullscreen}
-                        className="px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-extrabold text-xs rounded-xl"
+                        onClick={() => {
+                          enterFullscreen();
+                          setShowFsModal(false);
+                        }}
+                        className="cursor-pointer px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-extrabold text-xs rounded-xl"
                       >
-                        Enter Fullscreen
+                        Stay in Exam (Lock FS)
                       </button>
                       <button 
-                        onClick={() => triggerAutoSubmit('user')}
-                        className="px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-xs rounded-xl"
+                        onClick={() => {
+                          setShowFsModal(false);
+                          triggerAutoSubmit();
+                        }}
+                        className="cursor-pointer px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-xs rounded-xl"
                       >
-                        Submit Exam
+                        Exit and Submit
                       </button>
                     </div>
                   </motion.div>
@@ -621,34 +636,34 @@ export default function MockExam() {
 
             {/* Submit Confirmation Modal */}
             <AnimatePresence>
-              {showSubmitConfirmModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                  <motion.div initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }} exit={{ opacity:0, scale:0.9 }}
-                    className="bg-[#0D0D12] border border-white/5 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative">
+              {showSubmitModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }} 
+                    animate={{ opacity: 1, scale: 1 }} 
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-[#0D0D12] border border-white/5 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl relative"
+                  >
                     <div className="w-12 h-12 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mx-auto mb-4 text-[#FF7A00]">
-                      <Info size={20} />
+                      <HelpCircle size={20} />
                     </div>
-                    <h3 className="text-white font-bold text-base mb-2">Submit Assessment?</h3>
+                    <h3 className="text-white font-bold text-base mb-2">Complete Mock Session?</h3>
                     <p className="text-gray-400 text-xs leading-relaxed mb-6">
-                      You have answered <span className="text-[#FF7A00] font-bold">{Object.values(answers).filter(Boolean).length}</span> out of <span className="text-white font-bold">{questions.length}</span> questions.
-                      {Object.values(markedForReview).filter(Boolean).length > 0 && (
-                        <span> <br />Note: <span className="text-indigo-400 font-bold">{Object.values(markedForReview).filter(Boolean).length}</span> questions are marked for review.</span>
-                      )}
-                      <br /><br />Are you sure you want to finish and submit your exam?
+                      Are you sure you want to finalize and submit your assessment code files for evaluation?
                     </p>
                     <div className="flex gap-3 justify-center">
                       <button 
-                        onClick={() => setShowSubmitConfirmModal(false)}
+                        onClick={() => setShowSubmitModal(false)}
                         className="cursor-pointer px-5 py-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs rounded-xl"
                       >
                         Cancel
                       </button>
                       <button 
                         onClick={() => {
-                          setShowSubmitConfirmModal(false);
-                          triggerAutoSubmit('user');
+                          setShowSubmitModal(false);
+                          triggerAutoSubmit();
                         }}
-                        className="cursor-pointer px-6 py-2 bg-gradient-to-r from-red-600 to-[#FF7A00] text-white font-bold text-xs rounded-xl"
+                        className="cursor-pointer px-6 py-2 bg-gradient-to-r from-rose-600 to-[#FF7A00] text-white font-bold text-xs rounded-xl"
                       >
                         Yes, Submit
                       </button>
@@ -662,58 +677,52 @@ export default function MockExam() {
 
         {/* SCREEN 3: RESULTS */}
         {screen === 'results' && resultsData && (
-          <div className="max-w-4xl mx-auto p-6 space-y-6">
-            <div className="sticky top-0 z-30 bg-[#0B0B0F]/80 backdrop-blur-xl border-b border-white/5 py-4">
-              <h1 className="text-white font-bold text-lg">Assessment Summary</h1>
-              <p className="text-gray-500 text-xs">Review your exam score metrics and solution feedback</p>
+          <div className="max-w-4xl mx-auto p-6 space-y-6 w-full py-12">
+            <div className="border-b border-white/5 pb-4">
+              <h1 className="text-white font-extrabold text-2xl flex items-center gap-2">
+                <Award size={24} className="text-[#FF7A00]" />
+                Assessment Results
+              </h1>
+              <p className="text-gray-500 text-xs">Review your attempted statistics and practice alternatives below</p>
             </div>
 
-            {/* Performance summary card */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/[0.02] border border-white/8 rounded-3xl p-6 shadow-xl">
-              {/* Left Score text (2/3) */}
+            {/* Results score panel */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/[0.01] border border-white/5 rounded-3xl p-6 shadow-2xl">
               <div className="md:col-span-2 space-y-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-extrabold tracking-widest text-[#FF7A00] bg-[#FF7A00]/10 px-2 py-0.5 rounded-lg border border-[#FF7A00]/25 uppercase">
-                    {resultsData.company} Mock Result
+                  <span className="text-[10px] font-black tracking-widest text-[#FF7A00] bg-[#FF7A00]/10 px-2.5 py-0.5 rounded-lg border border-[#FF7A00]/20 uppercase">
+                    {resultsData.company} Mock Report
                   </span>
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                  {resultsData.score} / {resultsData.totalQuestions} Correct
+                <h2 className="text-2xl sm:text-3xl font-black text-white">
+                  {resultsData.score} / {resultsData.totalQuestions} Attempted
                 </h2>
                 <div className="flex flex-wrap gap-4 text-xs text-gray-500 pt-2">
                   <p>🕒 Time taken: <span className="text-white font-medium">{Math.floor(resultsData.timeTaken / 60)}m {resultsData.timeTaken % 60}s</span></p>
                   <p>🔥 Difficulty: <span className="text-white font-medium">{resultsData.difficulty}</span></p>
                 </div>
 
-                {/* Actions Row */}
                 <div className="flex flex-wrap gap-3 pt-4">
                   <button 
                     onClick={() => setScreen('setup')}
                     className="cursor-pointer px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-extrabold text-xs rounded-xl flex items-center gap-1.5"
                   >
-                    <RefreshCcw size={12} /> Retake Exam
+                    <RefreshCcw size={12} /> Retake Assessment
                   </button>
                   
-                  <Link 
-                    to={`/company/${resultsData.company.toLowerCase()}`}
-                    className="px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-xs rounded-xl flex items-center gap-1.5"
-                  >
-                    <BookOpen size={12} className="text-[#FF7A00]" /> Practice Weak Questions
-                  </Link>
-
                   <button 
-                    onClick={handleShare}
-                    className="cursor-pointer px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold text-xs rounded-xl flex items-center gap-1.5"
+                    onClick={() => navigate('/dashboard/roadmap')}
+                    className="cursor-pointer px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold text-xs rounded-xl flex items-center gap-1.5"
                   >
-                    <Share2 size={12} /> {copySuccess ? 'Copied!' : 'Share Result'}
+                    <BookOpen size={12} className="text-[#FF7A00]" /> Back to Dashboard
                   </button>
                 </div>
               </div>
 
-              {/* SVG Ring Chart (1/3) */}
-              <div className="flex flex-col items-center justify-center p-3 border-l border-white/5">
+              {/* Progress circle */}
+              <div className="flex flex-col items-center justify-center p-3 border-t md:border-t-0 md:border-l border-white/5">
                 {(() => {
-                  const pct = Math.round((resultsData.score / resultsData.totalQuestions) * 100);
+                  const pct = Math.round((resultsData.score / resultsData.totalQuestions) * 100) || 0;
                   const radius = 40;
                   const circ = 2 * Math.PI * radius;
                   const offset = circ - (pct / 100) * circ;
@@ -736,7 +745,7 @@ export default function MockExam() {
                       </svg>
                       <div className="absolute text-center">
                         <span className="text-lg font-black text-white">{pct}%</span>
-                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">Score</p>
+                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">Completion</p>
                       </div>
                     </div>
                   );
@@ -744,68 +753,67 @@ export default function MockExam() {
               </div>
             </div>
 
-            {/* Grid for breakdowns */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Questions table (2/3) */}
-              <div className="md:col-span-2 bg-[#0D0D12]/50 border border-white/8 rounded-3xl p-5 overflow-hidden">
-                <h3 className="text-white font-bold text-xs uppercase tracking-widest mb-4">Question Breakdown</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="text-gray-500 font-bold border-b border-white/5 pb-2">
-                        <th className="pb-2.5">Title</th>
-                        <th className="pb-2.5 text-center">Your Ans</th>
-                        <th className="pb-2.5 text-center">Status</th>
-                        <th className="pb-2.5 text-right">LeetCode</th>
+            {/* Questions list breakdown */}
+            <div className="bg-[#0D0D12]/40 border border-white/5 rounded-3xl p-5 overflow-hidden">
+              <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Question Breakdown</h3>
+              <p className="text-[11px] text-gray-500 mb-6 leading-relaxed">
+                📢 Note: Solutions submitted on LeetCode for proper evaluation. Review your exam session records below:
+              </p>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="text-gray-500 font-bold border-b border-white/5 pb-2">
+                      <th className="pb-2.5">Title</th>
+                      <th className="pb-2.5 text-center">Difficulty</th>
+                      <th className="pb-2.5 text-center">Language Used</th>
+                      <th className="pb-2.5 text-center">Status</th>
+                      <th className="pb-2.5 text-right">LeetCode</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {resultsData.questions?.map((q, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.01]">
+                        <td className="py-4 font-semibold text-gray-300 max-w-[200px] truncate">{q.title}</td>
+                        <td className="py-4 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            q.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-400' :
+                            q.difficulty === 'Medium' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-rose-500/10 text-rose-400'
+                          }`}>
+                            {q.difficulty}
+                          </span>
+                        </td>
+                        <td className="py-4 text-center font-mono font-medium text-slate-400 capitalize">{q.language || '-'}</td>
+                        <td className="py-4 text-center">
+                          {q.attempted ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-[11px]">
+                              <CheckCircle size={12} /> ✅ Attempted
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-slate-500 font-bold text-[11px]">
+                              <XCircle size={12} /> ⏭ Skipped
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-4 text-right">
+                          {q.leetcodeUrl ? (
+                            <a 
+                              href={q.leetcodeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-gray-500 hover:text-white inline-flex items-center gap-1 font-semibold transition-colors"
+                            >
+                              View on LeetCode →
+                            </a>
+                          ) : '-'}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {resultsData.questions?.map((q, idx) => (
-                        <tr key={idx} className="hover:bg-white/[0.01]">
-                          <td className="py-3 font-semibold text-gray-300 max-w-[200px] truncate">{q.title}</td>
-                          <td className="py-3 text-center font-mono font-bold text-[#FFB800]">{q.userAnswer || '-'}</td>
-                          <td className="py-3 text-center">
-                            {q.isCorrect ? (
-                              <CheckCircle size={14} className="text-green-500 mx-auto" />
-                            ) : (
-                              <XCircle size={14} className="text-red-500 mx-auto" />
-                            )}
-                          </td>
-                          <td className="py-3 text-right">
-                            {q.leetcodeUrl ? (
-                              <a href={q.leetcodeUrl} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-white inline-block">
-                                &#8599;
-                              </a>
-                            ) : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Difficulty breakdown (1/3) */}
-              <div className="bg-[#0D0D12]/50 border border-white/8 rounded-3xl p-5 space-y-4">
-                <h3 className="text-white font-bold text-xs uppercase tracking-widest">Difficulty Breakdown</h3>
-                {Object.keys(resultsData.breakdown || {}).map((diff) => {
-                  const dObj = resultsData.breakdown[diff];
-                  const dPct = dObj.total > 0 ? Math.round((dObj.solved / dObj.total) * 100) : 0;
-                  return (
-                    <div key={diff} className="space-y-1.5">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400 font-semibold">{diff}</span>
-                        <span className="text-white font-mono">{dObj.solved} / {dObj.total}</span>
-                      </div>
-                      <div className="w-full bg-[#0B0B0F] h-1.5 rounded-full overflow-hidden border border-white/5">
-                        <div className="bg-[#FF7A00] h-full rounded-full" style={{ width: `${dPct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-
           </div>
         )}
       </main>
