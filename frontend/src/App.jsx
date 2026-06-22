@@ -9,15 +9,15 @@ import Login         from './pages/Login';
 import Register      from './pages/Register';
 
 // Dashboard pages
-import DSAPractice   from './pages/dashboard/DSAPractice';
-import CompaniesPage from './pages/dashboard/CompaniesPage';
-import MockExam      from './pages/dashboard/MockExam';
-import Arena         from './pages/dashboard/Arena';
-import Roadmap       from './pages/dashboard/Roadmap';
-import History       from './pages/dashboard/History';
-import TopicQuestions from './pages/dashboard/TopicQuestions';
+import DSAPractice      from './pages/dashboard/DSAPractice';
+import CompaniesPage    from './pages/dashboard/CompaniesPage';
+import Arena            from './pages/dashboard/Arena';
+import Roadmap          from './pages/dashboard/Roadmap';
+import History          from './pages/dashboard/History';
+import TopicQuestions   from './pages/dashboard/TopicQuestions';
 import PracticeWorkspace from './pages/dashboard/PracticeWorkspace';
-import Playground       from './pages/dashboard/Playground';
+
+import GVChallenge      from './pages/dashboard/GVChallenge';
 
 // Redirect logged-in users away from auth pages
 const PublicOnlyRoute = () => {
@@ -48,22 +48,22 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           {/* Main Dashboard */}
           <Route path="/dashboard" element={<Dashboard />} />
-          
+
           {/* Dashboard Sub-Pages */}
-          <Route path="/dashboard/dsa"        element={<DSAPractice />} />
-          <Route path="/dashboard/companies"  element={<CompaniesPage />} />
-          <Route path="/dashboard/mock"       element={<MockExam />} />
-          <Route path="/dashboard/arena"      element={<Arena />} />
-          <Route path="/dashboard/roadmap"    element={<Roadmap />} />
+          <Route path="/dashboard/dsa"          element={<DSAPractice />} />
+          <Route path="/dashboard/companies"    element={<CompaniesPage />} />
+          <Route path="/dashboard/gvchallenge"  element={<GVChallenge />} />
+          <Route path="/dashboard/arena"        element={<Arena />} />
+          <Route path="/dashboard/roadmap"      element={<Roadmap />} />
           <Route path="/dashboard/history"      element={<History />} />
-          <Route path="/dashboard/playground"   element={<Playground />} />
+
           <Route path="/dashboard/practice/:questionId" element={<PracticeWorkspace />} />
-          
+
           {/* Company-specific Page */}
-          <Route path="/company/:name"        element={<CompanyPage />} />
+          <Route path="/company/:name"       element={<CompanyPage />} />
 
           {/* Topic-specific Page */}
-          <Route path="/topic/:topicName"     element={<TopicQuestions />} />
+          <Route path="/topic/:topicName"    element={<TopicQuestions />} />
         </Route>
 
         {/* Catch-all */}

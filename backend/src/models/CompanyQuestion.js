@@ -24,8 +24,8 @@ const CompanyQuestionSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Timeframe is required'],
       enum: {
-        values: ['6months', '1year', '2year', 'alltime'],
-        message: '{VALUE} is not a valid timeframe. Must be 6months, 1year, 2year, or alltime.',
+        values: ['1month', '3months', '6months', '1year', '2year', 'alltime'],
+        message: '{VALUE} is not a valid timeframe. Must be 1month, 3months, 6months, 1year, 2year, or alltime.',
       },
     },
   },

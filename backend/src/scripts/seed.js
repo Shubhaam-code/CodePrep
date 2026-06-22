@@ -8,240 +8,290 @@ const Question = require('../models/Question');
 const CompanyQuestion = require('../models/CompanyQuestion');
 const mongoose = require('mongoose');
 
-/**
- * Case-insensitive value retriever from CSV row object.
- */
-const getValCaseInsensitive = (row, keyPattern) => {
-  const keys = Object.keys(row);
-  const normalizedPattern = keyPattern.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedPattern);
-  return foundKey ? row[foundKey] : undefined;
+// ─────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────
+
+/** Case-insensitive, punctuation-stripped column lookup */
+const getVal = (row, key) => {
+  const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const found = Object.keys(row).find(
+    k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === norm
+  );
+  return found ? row[found] : undefined;
 };
 
-/**
- * Normalizes difficulty value.
- */
 const normalizeDifficulty = (diff) => {
   if (!diff) return 'Easy';
   const d = diff.trim().toLowerCase();
-  if (d === 'easy') return 'Easy';
+  if (d === 'easy')   return 'Easy';
   if (d === 'medium') return 'Medium';
-  if (d === 'hard') return 'Hard';
+  if (d === 'hard')   return 'Hard';
   return diff.charAt(0).toUpperCase() + diff.slice(1).toLowerCase();
 };
 
+const makeSlug = (title, id) =>
+  (title || `question-${id}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+
+/** Shared GitHub API headers */
+const githubHeaders = () => {
+  const h = { 'User-Agent': 'node-fetch' };
+  if (process.env.GITHUB_TOKEN) h['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  return h;
+};
+
+// ─────────────────────────────────────────────
+//  Core upsert (same logic for both repos)
+// ─────────────────────────────────────────────
+
 /**
- * Fetches, parses, and seeds a single CSV file from a given repository.
- * @returns {Promise<{ total: number, newCount: number, duplicatesSkipped: number }>}
+ * Upsert one Question + one CompanyQuestion record.
+ *
+ * Repo 1 columns : ID, Title, Acceptance, Difficulty, Frequency, Leetcode Link
+ * Repo 2 columns : ID, LeetcodeURL, Title, Difficulty, Acceptance%, Frequency%
  */
-const seedCSVFile = async (filename, repoUrl, company, timeframe, repoLabel, processedSet) => {
-  const url = `${repoUrl}${filename}`;
+const upsertRow = async (row, company, timeframe, repo) => {
+  let idStr, title, acceptance, difficultyRaw, frequencyRaw, leetcodeUrl;
 
-  try {
-    const response = await fetch(url);
+  if (repo === 1) {
+    idStr        = getVal(row, 'id');
+    title        = getVal(row, 'title');
+    acceptance   = getVal(row, 'acceptance');
+    difficultyRaw= getVal(row, 'difficulty');
+    frequencyRaw = getVal(row, 'frequency');
+    leetcodeUrl  = getVal(row, 'leetcode link') ||
+                   getVal(row, 'leetcodelink') ||
+                   getVal(row, 'link');
+  } else {
+    idStr        = getVal(row, 'id');
+    leetcodeUrl  = getVal(row, 'leetcodeurl') ||
+                   getVal(row, 'leetcode url');
+    title        = getVal(row, 'title');
+    difficultyRaw= getVal(row, 'difficulty');
+    acceptance   = getVal(row, 'acceptance') ||
+                   getVal(row, 'acceptance%');
+    frequencyRaw = getVal(row, 'frequency') ||
+                   getVal(row, 'frequency%');
+  }
 
-    if (response.status === 404) {
-      console.log(`Seeding ${company}_${timeframe} (${repoLabel})... ⏭ skipped (not found)`);
-      return { total: 0, newCount: 0, duplicatesSkipped: 0 };
-    }
+  const leetcodeId = parseInt(idStr, 10);
+  if (isNaN(leetcodeId)) return null;
 
-    if (!response.ok) {
-      console.error(`Seeding ${company}_${timeframe} (${repoLabel})... ❌ failed (Status: ${response.status})`);
-      return { total: 0, newCount: 0, duplicatesSkipped: 0 };
-    }
+  const difficulty = normalizeDifficulty(difficultyRaw);
+  const frequency  = parseFloat(frequencyRaw) || 0;
+  const isPremium  = !!(leetcodeUrl && leetcodeUrl.includes('premium')) || leetcodeId > 2800;
 
-    const csvText = await response.text();
-    const records = parse(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true
-    });
+  const slug = makeSlug(title, leetcodeId);
+  const gfgUrl      = `https://www.geeksforgeeks.org/problems/${slug}`;
+  const neetcodeUrl = `https://neetcode.io/problems/${slug}`;
+  const youtubeUrl  = `https://www.youtube.com/results?search_query=${encodeURIComponent((title || `Question #${leetcodeId}`) + ' leetcode solution')}`;
 
-    let newCount = 0;
-    let duplicatesSkipped = 0;
-    let totalQuestions = 0;
+  // Upsert Question
+  const question = await Question.findOneAndUpdate(
+    { leetcodeId: Number(leetcodeId) },
+    {
+      leetcodeId,
+      title:       title || `Question #${leetcodeId}`,
+      difficulty,
+      acceptance:  acceptance || '',
+      leetcodeUrl: leetcodeUrl || '',
+      isPremium,
+      gfgUrl,
+      neetcodeUrl,
+      youtubeUrl,
+    },
+    { upsert: true, new: true, runValidators: true }
+  );
 
-    for (const row of records) {
-      const idStr = getValCaseInsensitive(row, 'id');
-      const title = getValCaseInsensitive(row, 'title');
-      const acceptance = getValCaseInsensitive(row, 'acceptance');
-      const difficultyRaw = getValCaseInsensitive(row, 'difficulty');
-      const frequencyRaw = getValCaseInsensitive(row, 'frequency');
-      const leetcodeUrl = getValCaseInsensitive(row, 'leetcodequestionlink') || 
-                          getValCaseInsensitive(row, 'leetcodeurl') || 
-                          getValCaseInsensitive(row, 'link');
+  // Upsert CompanyQuestion
+  await CompanyQuestion.findOneAndUpdate(
+    { company, questionId: question._id, timeframe },
+    { company, questionId: question._id, frequency, timeframe },
+    { upsert: true, runValidators: true }
+  );
 
-      const leetcodeId = parseInt(idStr, 10);
-      if (isNaN(leetcodeId)) {
+  return question;
+};
+
+// ─────────────────────────────────────────────
+//  REPO 1  (krishnadey30) — flat CSV files
+// ─────────────────────────────────────────────
+
+const REPO1_RAW  = 'https://raw.githubusercontent.com/krishnadey30/LeetCode-Questions-CompanyWise/master/';
+const REPO1_API  = 'https://api.github.com/repos/krishnadey30/LeetCode-Questions-CompanyWise/contents/';
+
+/** Parse "google_alltime.csv" → { company: 'google', timeframe: 'alltime' } */
+const parseRepo1Filename = (name) => {
+  const match = name.match(/^(.+?)_(6months|1year|2year|alltime)\.csv$/i);
+  if (!match) return null;
+  return { company: match[1].toLowerCase(), timeframe: match[2].toLowerCase() };
+};
+
+const seedRepo1 = async () => {
+  console.log('\n── Repo 1 (krishnadey30) ──────────────────────');
+
+  const res = await fetch(REPO1_API, { headers: githubHeaders() });
+  if (!res.ok) throw new Error(`Repo1 API error: ${res.status} ${res.statusText}`);
+
+  const items = await res.json();
+  const csvFiles = items.filter(i => i.type === 'file' && i.name.toLowerCase().endsWith('.csv'));
+  console.log(`Found ${csvFiles.length} CSV files in Repo 1.`);
+
+  let totalQuestions = 0;
+
+  for (const file of csvFiles) {
+    const parsed = parseRepo1Filename(file.name);
+    if (!parsed) continue;
+
+    const { company, timeframe } = parsed;
+    const url = `${REPO1_RAW}${file.name}`;
+
+    try {
+      const csvRes = await fetch(url);
+      if (!csvRes.ok) {
+        console.log(`  ⏭ ${file.name} skipped (${csvRes.status})`);
         continue;
       }
 
-      const difficulty = normalizeDifficulty(difficultyRaw);
-      const frequency = parseFloat(frequencyRaw) || 0;
+      const records = parse(await csvRes.text(), {
+        columns: true, skip_empty_lines: true, trim: true,
+      });
 
-      // 5. Detect premium questions
-      const isPremium = !!(leetcodeUrl && leetcodeUrl.includes('/premium')) || leetcodeId >= 1500;
-
-      const processedKey = `${company}_${leetcodeId}_${timeframe}`;
-
-      if (repoLabel === 'repo2') {
-        if (processedSet.has(processedKey)) {
-          duplicatesSkipped++;
-          continue;
-        } else {
-          processedSet.add(processedKey);
-          newCount++;
-        }
-      } else {
-        processedSet.add(processedKey);
-        totalQuestions++;
+      let count = 0;
+      for (const row of records) {
+        const q = await upsertRow(row, company, timeframe, 1);
+        if (q) count++;
       }
 
-      const slug = (title || `Question #${leetcodeId}`).toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .trim()
-        .replace(/\s+/g, '-');
-
-      const gfgUrl = `https://www.geeksforgeeks.org/problems/${slug}`;
-      const neetcodeUrl = `https://neetcode.io/problems/${slug}`;
-      const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent((title || `Question #${leetcodeId}`) + ' leetcode solution')}`;
-
-      // Upsert Question details
-      const question = await Question.findOneAndUpdate(
-        { leetcodeId },
-        {
-          title: title || `Question #${leetcodeId}`,
-          difficulty,
-          acceptance: acceptance || '',
-          leetcodeUrl: leetcodeUrl || '',
-          isPremium,
-          gfgUrl,
-          neetcodeUrl,
-          youtubeUrl
-        },
-        { upsert: true, new: true, runValidators: true }
-      );
-
-      // Upsert CompanyQuestion details
-      await CompanyQuestion.findOneAndUpdate(
-        {
-          company,
-          questionId: question._id,
-          timeframe
-        },
-        { frequency },
-        { upsert: true, runValidators: true }
-      );
+      totalQuestions += count;
+      console.log(`  📁 Repo1: ${file.name} → ${count} questions`);
+    } catch (err) {
+      console.error(`  ❌ ${file.name}: ${err.message}`);
     }
-
-    if (repoLabel === 'repo1') {
-      console.log(`✅ ${company}_${timeframe} (repo1) → ${totalQuestions} questions`);
-    } else {
-      console.log(`✅ ${company}_${timeframe} (repo2) → ${newCount} new, ${duplicatesSkipped} duplicates skipped`);
-    }
-
-    return { total: totalQuestions, newCount, duplicatesSkipped };
-  } catch (error) {
-    console.error(`Seeding ${company}_${timeframe} (${repoLabel})... ❌ failed error: ${error.message}`);
-    return { total: 0, newCount: 0, duplicatesSkipped: 0 };
   }
+
+  return totalQuestions;
 };
 
-/**
- * Main seeding execution function.
- */
+// ─────────────────────────────────────────────
+//  REPO 2  (snehasishroy) — folder-based
+// ─────────────────────────────────────────────
+
+const REPO2_RAW = 'https://raw.githubusercontent.com/snehasishroy/leetcode-companywise-interview-questions/master/';
+const REPO2_API = 'https://api.github.com/repos/snehasishroy/leetcode-companywise-interview-questions/contents/';
+
+/** Map CSV filename → timeframe string */
+const REPO2_TIMEFRAME_MAP = {
+  'all.csv':          'alltime',
+  'thirty-days.csv':  '1month',
+  'three-months.csv': '3months',
+  'six-months.csv':   '6months',
+  'one-year.csv':     '1year',
+};
+
+const seedRepo2 = async () => {
+  console.log('\n── Repo 2 (snehasishroy) ──────────────────────');
+
+  const res = await fetch(REPO2_API, { headers: githubHeaders() });
+  if (!res.ok) throw new Error(`Repo2 API error: ${res.status} ${res.statusText}`);
+
+  const items = await res.json();
+  const companyFolders = items.filter(i => i.type === 'dir');
+  console.log(`Found ${companyFolders.length} company folders in Repo 2.`);
+
+  let totalNew = 0;
+  let totalUpdated = 0;
+
+  for (const folder of companyFolders) {
+    const company = folder.name.toLowerCase();
+
+    try {
+      const folderRes = await fetch(`${REPO2_API}${folder.name}`, { headers: githubHeaders() });
+      if (!folderRes.ok) {
+        console.log(`  ⏭ ${company}/ skipped (${folderRes.status})`);
+        continue;
+      }
+
+      const folderItems = await folderRes.json();
+      const csvFiles = folderItems.filter(
+        i => i.type === 'file' && i.name.toLowerCase().endsWith('.csv')
+      );
+
+      for (const file of csvFiles) {
+        const timeframe = REPO2_TIMEFRAME_MAP[file.name.toLowerCase()];
+        if (!timeframe) {
+          console.log(`  ⏭ ${company}/${file.name} — unknown timeframe, skipping`);
+          continue;
+        }
+
+        const rawUrl = `${REPO2_RAW}${folder.name}/${file.name}`;
+
+        try {
+          const csvRes = await fetch(rawUrl);
+          if (!csvRes.ok) {
+            console.log(`  ⏭ ${company}/${file.name} skipped (${csvRes.status})`);
+            continue;
+          }
+
+          const records = parse(await csvRes.text(), {
+            columns: true, skip_empty_lines: true, trim: true,
+          });
+
+          let newCount = 0;
+          let updatedCount = 0;
+
+          for (const row of records) {
+            const idStr = getVal(row, 'id');
+            const leetcodeId = parseInt(idStr, 10);
+            if (isNaN(leetcodeId)) continue;
+
+            const existsBefore = await Question.exists({ leetcodeId });
+            await upsertRow(row, company, timeframe, 2);
+
+            if (existsBefore) updatedCount++;
+            else newCount++;
+          }
+
+          totalNew     += newCount;
+          totalUpdated += updatedCount;
+          console.log(`  📁 Repo2: ${company}/${file.name} → ${newCount} new, ${updatedCount} updated`);
+        } catch (err) {
+          console.error(`  ❌ ${company}/${file.name}: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.error(`  ❌ ${company}/: ${err.message}`);
+    }
+  }
+
+  return { totalNew, totalUpdated };
+};
+
+// ─────────────────────────────────────────────
+//  Entry point
+// ─────────────────────────────────────────────
+
 const run = async () => {
   try {
-    // Establish DB Connection
     await connectDB();
-    console.log('Fetching files list from GitHub repository contents API...');
+    console.log('🚀 Starting seed...\n');
 
-    const headers = { 'User-Agent': 'node-fetch' };
-    if (process.env.GITHUB_TOKEN) {
-      headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
-    }
+    await seedRepo1();
+    await seedRepo2();
 
-    // 1. Fetch ALL filenames from both repos via GitHub API
-    const res1 = await fetch('https://api.github.com/repos/krishnadey30/LeetCode-Questions-CompanyWise/contents/', { headers });
-    if (!res1.ok) {
-      throw new Error(`Failed to fetch repo1 contents: ${res1.statusText} (${res1.status})`);
-    }
-    const items1 = await res1.json();
-
-    const res2 = await fetch('https://api.github.com/repos/snehasishroy/leetcode-companywise-interview-questions/contents/', { headers });
-    if (!res2.ok) {
-      throw new Error(`Failed to fetch repo2 contents: ${res2.statusText} (${res2.status})`);
-    }
-    const items2 = await res2.json();
-
-    // 2. Filter only .csv files
-    const csvFiles1 = items1.filter(
-      (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.csv')
-    );
-    const csvFiles2 = items2.filter(
-      (item) => item.type === 'file' && item.name.toLowerCase().endsWith('.csv')
-    );
-
-    console.log(`Found ${csvFiles1.length} CSV files in Repo 1, and ${csvFiles2.length} CSV files in Repo 2.`);
-
-    const processedSet = new Set();
-    const uniqueCompanies = new Set();
-
-    // Process REPO 1
-    for (const file of csvFiles1) {
-      const filename = file.name;
-      // 3. Parse company + timeframe from filename
-      const match = filename.match(/^(.+)_(6months|1year|2year|alltime)\.csv$/i);
-      if (!match) continue;
-
-      const company = match[1].toLowerCase();
-      const timeframe = match[2].toLowerCase();
-
-      uniqueCompanies.add(company);
-
-      // 4. Fetch, parse, and upsert
-      await seedCSVFile(
-        filename,
-        'https://raw.githubusercontent.com/krishnadey30/LeetCode-Questions-CompanyWise/master/',
-        company,
-        timeframe,
-        'repo1',
-        processedSet
-      );
-    }
-
-    // Process REPO 2
-    for (const file of csvFiles2) {
-      const filename = file.name;
-      // 3. Parse company + timeframe from filename
-      const match = filename.match(/^(.+)_(6months|1year|2year|alltime)\.csv$/i);
-      if (!match) continue;
-
-      const company = match[1].toLowerCase();
-      const timeframe = match[2].toLowerCase();
-
-      uniqueCompanies.add(company);
-
-      // 4. Fetch, parse, and upsert
-      await seedCSVFile(
-        filename,
-        'https://raw.githubusercontent.com/snehasishroy/leetcode-companywise-interview-questions/main/',
-        company,
-        timeframe,
-        'repo2',
-        processedSet
-      );
-    }
-
-    // 7. Log total and complete status
     const totalQuestions = await Question.countDocuments();
+    const totalCompanyQ  = await CompanyQuestion.countDocuments();
+
     console.log('\n==================================================');
-    console.log(`🌱 Total: ${totalQuestions} questions, ${uniqueCompanies.size} companies`);
+    console.log(`🌱 Done! Questions: ${totalQuestions} | Companies: ${totalCompanyQ}`);
     console.log('==================================================');
-  } catch (error) {
-    console.error(`CRITICAL: Seeding aborted: ${error.message}`);
+  } catch (err) {
+    console.error(`\n💥 CRITICAL — Seeding aborted: ${err.message}`);
   } finally {
-    // Close the mongoose connection
     await mongoose.connection.close();
     process.exit(0);
   }

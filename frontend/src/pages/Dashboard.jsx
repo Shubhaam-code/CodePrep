@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { motion, useSpring, useMotionValue, animate } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import {
   Code2, Flame, Bookmark, Calendar,
-  ArrowRight, ExternalLink, ChevronRight,
+  ArrowRight, ExternalLink,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
@@ -128,39 +128,7 @@ function ProgressBar({ pct }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Week streak dots
-───────────────────────────────────────────── */
-function WeekDots({ history = [] }) {
-  const days   = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const today  = new Date().getDay(); // 0 = Sun
-  // Re-map so index 0 = Monday
-  const todayIdx = today === 0 ? 6 : today - 1;
 
-  return (
-    <div className="mt-4">
-      <div className="flex gap-1 justify-center">
-        {days.map((d, i) => {
-          const isToday  = i === todayIdx;
-          const isSolved = history[i] ?? false;
-          return (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <div
-                className="w-5 h-5 rounded-md transition-all"
-                style={{
-                  background:  isSolved ? 'var(--orange, #F97316)' : 'var(--bg-hover, #141428)',
-                  outline:     isToday  ? '1px solid var(--orange, #F97316)' : 'none',
-                  outlineOffset: '2px',
-                }}
-              />
-              <span className="text-[9px]" style={{ color: 'var(--text-3, #475569)' }}>{d}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────
    New-user welcome state
@@ -235,19 +203,10 @@ function NewUserWelcome({ user }) {
 }
 
 /* ─────────────────────────────────────────────
-   Daily challenge card
+   GV Challenge promo card
 ───────────────────────────────────────────── */
-function DailyChallenge({ streak }) {
+function GVChallengeCard({ streak }) {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({
-    queryKey: ['daily'],
-    queryFn: () => apiClient.get('/api/playground/daily').then((r) => r.data),
-    staleTime: 60 * 60 * 1000,
-    retry: false,
-  });
-
-  const weekHistory = Array(7).fill(false); // fallback; real history from API if available
-
   return (
     <div className="rounded-xl p-5 h-full"
       style={{
@@ -258,46 +217,22 @@ function DailyChallenge({ streak }) {
       <span className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-5"
         style={{ background: 'var(--orange-dim,rgba(249,115,22,0.12))', color: 'var(--orange,#F97316)' }}
       >
-        Today's Challenge
+        🏆 GV Challenge
       </span>
 
-      {isLoading ? (
-        <div className="animate-pulse space-y-2">
-          <div className="h-4 rounded" style={{ background: 'var(--bg-hover,#141428)', width: '80%' }} />
-          <div className="h-3 rounded" style={{ background: 'var(--bg-hover,#141428)', width: '50%' }} />
-        </div>
-      ) : data?.question ? (
-        <div>
-          <p className="font-semibold mb-2 leading-snug" style={{ color: 'var(--text-1,#F1F5F9)' }}>
-            {data.question.title}
-          </p>
-          <span className="text-xs px-2 py-0.5 rounded-md font-semibold inline-block mb-4"
-            style={{ color: diffColor(data.question.difficulty), background: diffColor(data.question.difficulty) + '18' }}
-          >
-            {data.question.difficulty}
-          </span>
-          <button
-            onClick={() => navigate('/dashboard/playground')}
-            className="cursor-pointer w-full py-2.5 rounded-lg font-semibold text-black text-sm transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, var(--orange,#F97316), var(--secondary,#FFB800))' }}
-          >
-            Solve Now →
-          </button>
-        </div>
-      ) : (
-        <div>
-          <p className="text-sm mb-3" style={{ color: 'var(--text-2,#94A3B8)' }}>
-            No daily challenge right now. Head to practice!
-          </p>
-          <button
-            onClick={() => navigate('/dashboard/dsa')}
-            className="cursor-pointer w-full py-2.5 rounded-lg font-semibold text-black text-sm hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, var(--orange,#F97316), var(--secondary,#FFB800))' }}
-          >
-            Browse Questions →
-          </button>
-        </div>
-      )}
+      <p className="font-semibold mb-2 leading-snug" style={{ color: 'var(--text-1,#F1F5F9)' }}>
+        Code. Push. Post. Repeat.
+      </p>
+      <p className="text-xs mb-4" style={{ color: 'var(--text-3,#475569)' }}>
+        Solve daily DSA questions, push to GitHub with LeetHub, and share on LinkedIn.
+      </p>
+      <button
+        onClick={() => navigate('/dashboard/gvchallenge')}
+        className="cursor-pointer w-full py-2.5 rounded-lg font-semibold text-black text-sm transition-opacity hover:opacity-90"
+        style={{ background: 'linear-gradient(135deg, var(--orange,#F97316), var(--secondary,#FFB800))' }}
+      >
+        Start Today's Challenge →
+      </button>
 
       {/* Streak */}
       <div className="mt-5 text-center">
@@ -313,11 +248,11 @@ function DailyChallenge({ streak }) {
           🔥 {streak?.current || 0}
         </p>
         <p className="text-xs mt-1" style={{ color: 'var(--text-3, #475569)' }}>day streak</p>
-        <WeekDots history={weekHistory} />
       </div>
     </div>
   );
 }
+
 
 /* ─────────────────────────────────────────────
    Main Dashboard
@@ -525,7 +460,7 @@ export default function Dashboard() {
 
                   {/* Right: Daily Challenge */}
                   <div className="lg:col-span-1">
-                    <DailyChallenge streak={streak} />
+                    <GVChallengeCard streak={streak} />
                   </div>
                 </div>
               )}

@@ -1,5 +1,4 @@
 const path = require('path');
-// Load environment variables from .env file
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const express = require('express');
@@ -10,11 +9,11 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const companyRoutes = require('./routes/companies');
 const userRoutes = require('./routes/user');
-const examRoutes = require('./routes/exam');
-const playgroundRoutes = require('./routes/playground');
+
 const questionRoutes = require('./routes/questions');
 const arenaRoutes = require('./routes/arena');
 const judgeRoutes = require('./routes/judge');
+const gvchallengeRoutes = require('./routes/gvchallenge');
 
 const app = express();
 const http = require('http');
@@ -52,27 +51,22 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/user', userRoutes);
-app.use('/api/exam', examRoutes);
-app.use('/api/playground', playgroundRoutes);
+
 app.use('/api/questions', questionRoutes);
 app.use('/api/arena', arenaRoutes);
 app.use('/api/judge', judgeRoutes);
+app.use('/api/gvchallenge', gvchallengeRoutes);
 
-// Mock Exam History Endpoint
-const ExamSession = require('./models/ExamSession');
+// Arena Match History Endpoint (inline, no exam dependency)
 const authMiddleware = require('./middleware/auth');
+
 app.get('/api/history', authMiddleware, async (req, res) => {
   try {
-    const sessions = await ExamSession.find({ userId: req.user.id })
-      .populate({
-        path: 'questions.questionId',
-        model: 'Question'
-      })
-      .sort({ startTime: -1 });
-    res.status(200).json(sessions);
+    // Return empty array since exam sessions are removed
+    res.status(200).json([]);
   } catch (error) {
-    console.error('Error fetching exam history:', error);
-    res.status(500).json({ message: 'Server error fetching exam history' });
+    console.error('Error fetching history:', error);
+    res.status(500).json({ message: 'Server error fetching history' });
   }
 });
 

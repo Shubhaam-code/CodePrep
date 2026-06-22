@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const CompanyQuestion = require('../models/CompanyQuestion');
 const Question = require('../models/Question');
-const Submission = require('../models/Submission');
+
 const authMiddleware = require('../middleware/auth');
 
 router.use(authMiddleware);
@@ -71,21 +71,7 @@ router.post('/solve/:questionId', async (req, res) => {
     user.streak.lastSolvedDate = now;
     await user.save();
 
-    // Log to Submission history
-    try {
-      const sub = new Submission({
-        userId: user._id,
-        questionId,
-        code: '// Marked as solved in DSA practice page',
-        language: 'Mixed',
-        status: 'passed',
-        type: 'dsa',
-        streakDay: user.streak.current
-      });
-      await sub.save();
-    } catch (err) {
-      console.error('Error logging DSA solve to history:', err);
-    }
+
 
     // Return the updated solvedQuestions array directly
     res.status(200).json(user.solvedQuestions);

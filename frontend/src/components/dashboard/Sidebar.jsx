@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Code2, Trophy, Terminal,
+  LayoutDashboard, Code2, Trophy,
   Map, History, Settings, LogOut, ChevronRight,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/store';
@@ -9,19 +9,18 @@ import { logout } from '../../store/authSlice';
 
 /* ── Nav items ── */
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard',   path: '/dashboard',            exact: true  },
-  { icon: Code2,           label: 'DSA Practice',path: '/dashboard/dsa',        exact: false },
-  { icon: Trophy,          label: 'Mock Exam',    path: '/dashboard/mock',       exact: false },
-  { icon: Terminal,        label: 'Playground',   path: '/dashboard/playground', exact: false },
-  { icon: Map,             label: 'Roadmap',      path: '/dashboard/roadmap',    exact: false },
-  { icon: History,         label: 'History',      path: '/dashboard/history',    exact: false },
+  { icon: LayoutDashboard, label: 'Dashboard',    path: '/dashboard',             exact: true  },
+  { icon: Code2,           label: 'DSA Practice', path: '/dashboard/dsa',         exact: false },
+  { icon: Trophy,          label: 'GV Challenge', path: '/dashboard/gvchallenge', exact: false },
+  { icon: Map,             label: 'Roadmap',      path: '/dashboard/roadmap',     exact: false },
+  { icon: History,         label: 'History',      path: '/dashboard/history',     exact: false },
 ];
 
 const MOBILE_TABS = [
-  { icon: LayoutDashboard, label: 'Home',     path: '/dashboard',       exact: true  },
-  { icon: Code2,           label: 'DSA',      path: '/dashboard/dsa',   exact: false },
-  { icon: Trophy,          label: 'Exam',     path: '/dashboard/mock',  exact: false },
-  { icon: Terminal,        label: 'Play',     path: '/dashboard/playground', exact: false },
+  { icon: LayoutDashboard, label: 'Home', path: '/dashboard',             exact: true  },
+  { icon: Code2,           label: 'DSA',  path: '/dashboard/dsa',         exact: false },
+  { icon: Trophy,          label: 'GV',   path: '/dashboard/gvchallenge', exact: false },
+  { icon: Map,             label: 'Road', path: '/dashboard/roadmap',     exact: false },
 ];
 
 function isActive(pathname, item) {
@@ -29,7 +28,7 @@ function isActive(pathname, item) {
   return pathname.startsWith(item.path);
 }
 
-/* ── Letter avatar colour (same logic as DSAPractice) ── */
+/* ── Letter avatar colour ── */
 function getLetterColor(name = '') {
   const ch = name[0]?.toUpperCase() || 'A';
   const map = {
