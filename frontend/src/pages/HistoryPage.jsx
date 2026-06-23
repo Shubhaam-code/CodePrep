@@ -1,6 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { History, Clock, FileText, BarChart2, CheckCircle, ArrowRight } from 'lucide-react';
+import {
+  FaClock as Clock, FaBookmark as FileText,
+  FaCircle as BarChart2, FaCheckCircle as CheckCircle, FaArrowRight as ArrowRight
+} from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/dashboard/Sidebar';
 

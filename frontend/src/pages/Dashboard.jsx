@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, animate } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import {
-  Code2, Flame, Bookmark, Calendar,
-  ArrowRight, ExternalLink,
-} from 'lucide-react';
+  FaCode as Code2, FaBookmark as Bookmark, FaCalendar as Calendar,
+  FaArrowRight as ArrowRight, FaExternalLinkAlt as ExternalLink, FaCodeBranch as GitBranch,
+  FaCheckCircle as CheckCircle2, FaExclamationCircle as AlertCircle, FaSpinner as Loader2,
+  FaGithub as Github, FaFire as Flame
+} from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
 import { useAppSelector } from '../store/store';
@@ -253,6 +255,195 @@ function GVChallengeCard({ streak }) {
   );
 }
 
+/* ─────────────────────────────────────────────
+   GitHub Sync Stats Card
+───────────────────────────────────────────── */
+function GitHubStatsCard(props) {
+  console.log("GitHubStatsCard: Rendering. Props:", props);
+  
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['githubStats'],
+    queryFn: () => apiClient.get('/api/github/stats').then((r) => {
+      console.log("GitHubStatsCard: API GET /api/github/stats response:", r.data);
+      return r.data;
+    }),
+    staleTime: 30 * 1000,
+  });
+
+  console.log("GitHubStatsCard: Query State:", { data, isLoading, error });
+
+  if (isLoading) {
+    return (
+      <div
+        className="rounded-xl p-5 animate-pulse space-y-4"
+        style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded bg-gray-700 animate-pulse" />
+            <div className="w-24 h-4 rounded bg-gray-700 animate-pulse" />
+          </div>
+          <div className="w-16 h-5 rounded-full bg-gray-700 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="h-16 rounded bg-gray-700 animate-pulse" />
+          <div className="h-16 rounded bg-gray-700 animate-pulse" />
+        </div>
+        <div className="space-y-2 pt-2">
+          <div className="h-3 rounded bg-gray-700 w-2/3 animate-pulse" />
+          <div className="h-3 rounded bg-gray-700 w-1/2 animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div
+        className="rounded-xl p-5 text-center"
+        style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+      >
+        <p className="text-sm font-medium" style={{ color: 'var(--red, #EF4444)' }}>
+          Failed to load GitHub stats
+        </p>
+      </div>
+    );
+  }
+
+  const {
+    githubConnected = false,
+    repositoryName = null,
+    totalSolvedQuestions = 0,
+    totalCompaniesCovered = 0,
+    lastSyncAt = null,
+    recentSubmissions = [],
+  } = data;
+
+  return (
+    <div
+      className="rounded-xl p-5 transition-all relative overflow-hidden"
+      style={{
+        background: 'var(--bg-card, #0F0F1A)',
+        border: githubConnected
+          ? '1px solid var(--orange-dim, rgba(249,115,22,0.15))'
+          : '1px solid var(--border, rgba(255,255,255,0.06))',
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+          >
+            <Github size={16} className="text-slate-300" />
+          </div>
+          <span className="font-semibold text-sm" style={{ color: 'var(--text-1, #F1F5F9)' }}>
+            GitHub Sync
+          </span>
+        </div>
+
+        {/* Status Badge */}
+        {githubConnected ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(34,197,94,0.1)', color: 'var(--green, #22C55E)' }}
+          >
+            <CheckCircle2 size={10} /> Connected
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red, #EF4444)' }}
+          >
+            <AlertCircle size={10} /> Disconnected
+          </span>
+        )}
+      </div>
+
+      {/* Repo / Conn details */}
+      {githubConnected ? (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono"
+            style={{ background: 'var(--bg-hover, #141428)', color: 'var(--text-2, #94A3B8)' }}
+          >
+            <GitBranch size={12} className="text-slate-400 shrink-0" />
+            <span className="truncate" title={repositoryName || 'company-preparation'}>
+              {repositoryName || 'company-preparation'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 text-xs leading-relaxed" style={{ color: 'var(--text-3, #475569)' }}>
+          Connect your GitHub account in settings to automatically backup and sync your progress.
+        </div>
+      )}
+
+      {/* Stats Mini Grid */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="p-3 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.03)' }}>
+          <p className="text-lg font-bold font-mono" style={{ color: 'var(--text-1, #F1F5F9)' }}>
+            {totalSolvedQuestions}
+          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-3, #475569)' }}>
+            Solved
+          </p>
+        </div>
+        <div className="p-3 rounded-lg text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.03)' }}>
+          <p className="text-lg font-bold font-mono" style={{ color: 'var(--text-1, #F1F5F9)' }}>
+            {totalCompaniesCovered}
+          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-3, #475569)' }}>
+            Companies
+          </p>
+        </div>
+      </div>
+
+      {/* Last Sync */}
+      {githubConnected && (
+        <div className="flex items-center justify-between text-xs border-b pb-3 mb-3" style={{ borderColor: 'var(--border, rgba(255,255,255,0.06))' }}>
+          <span style={{ color: 'var(--text-3, #475569)' }}>Last Sync Time</span>
+          <span className="font-medium" style={{ color: 'var(--text-2, #94A3B8)' }}>
+            {lastSyncAt ? timeAgo(lastSyncAt) : 'Not synced yet'}
+          </span>
+        </div>
+      )}
+
+      {/* Recent Push Activity */}
+      <div>
+        <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-2, #94A3B8)' }}>
+          Recent Activity
+        </p>
+        {recentSubmissions.length === 0 ? (
+          <p className="text-xs py-3 text-center" style={{ color: 'var(--text-3, #475569)' }}>
+            No recent activity
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {recentSubmissions.slice(0, 3).map((sub) => (
+              <div key={sub._id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded" style={{ background: 'rgba(255,255,255,0.01)' }}>
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="font-medium truncate" style={{ color: 'var(--text-1, #F1F5F9)' }}>
+                    {sub.questionTitle}
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-3, #475569)' }}>
+                    {sub.company} • <span className="uppercase">{sub.language}</span>
+                  </p>
+                </div>
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--text-3, #475569)' }}>
+                  {timeAgo(sub.submittedAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <Link
+        to="/profile/github"
+        className="text-center font-bold text-xs text-[#FF7A00] hover:text-[#FFB800] transition duration-200 mt-4 block border-t border-white/5 pt-3"
+      >
+        View Integration Details →
+      </Link>
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────
    Main Dashboard
@@ -458,9 +649,10 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Right: Daily Challenge */}
-                  <div className="lg:col-span-1">
+                  {/* Right: Daily Challenge & GitHub Stats */}
+                  <div className="lg:col-span-1 space-y-6">
                     <GVChallengeCard streak={streak} />
+                    <GitHubStatsCard />
                   </div>
                 </div>
               )}

@@ -1,12 +1,12 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { ArrowRight, Zap, Code2, Trophy } from 'lucide-react';
+import { FaArrowRight as ArrowRight, FaFire as Zap, FaCode as Code2 } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '../store/store';
 
 /* ── Stats shown in hero ── */
 const stats = [
   { value: '3,500+', label: 'Questions', icon: <Code2 size={14} />,  color: '#FF7A00' },
-  { value: '150+',   label: 'Companies', icon: <Trophy size={14} />, color: '#FFB800' },
+
   { value: '100%',   label: 'Free',      icon: <Zap size={14} />,    color: '#22C55E' },
 ];
 

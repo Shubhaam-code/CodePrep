@@ -23,6 +23,13 @@ const SubmissionSchema = new mongoose.Schema(
       required: [true, 'Language is required'],
       trim: true,
     },
+    company: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      index: true,
+      default: null,
+    },
     submittedAt: {
       type: Date,
       default: Date.now,

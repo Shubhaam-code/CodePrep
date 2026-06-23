@@ -7,7 +7,7 @@ import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorMessage from '../../components/ErrorMessage';
-import { ArrowLeft } from 'lucide-react';
+
 import QuestionLinks from '../../components/QuestionLinks';
 
 const diffColors = {

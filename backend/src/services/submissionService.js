@@ -10,21 +10,23 @@ const githubRepositoryService = require('./githubRepositoryService');
  * @param {string} questionId 
  * @param {string} code 
  * @param {string} language 
+ * @param {string|null} company - Optional company name from the frontend
  * @returns {Promise<object>}
  */
-const saveSubmissionAndPush = async (userId, questionId, code, language) => {
+const saveSubmissionAndPush = async (userId, questionId, code, language, company = null) => {
   // 1. Find question by questionId
   const question = await Question.findById(questionId);
   if (!question) {
     throw new Error('Question not found');
   }
 
-  // 2. Save submission
+  // 2. Save submission (include company if provided)
   const submission = new Submission({
     userId,
     questionId,
     code,
     language,
+    company: company || null,
     submittedAt: new Date(),
   });
   await submission.save();
@@ -80,10 +82,15 @@ const saveSubmissionAndPush = async (userId, questionId, code, language) => {
     const token = user.githubAccessToken;
     const username = user.githubUsername;
 
-    // Determine company
-    const companyQuestion = await CompanyQuestion.findOne({ questionId });
-    const rawCompany = companyQuestion ? companyQuestion.company : 'general';
-    const company = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+    // Determine company folder name: prefer submission company, fallback to CompanyQuestion lookup
+    let folderCompany;
+    if (company) {
+      folderCompany = company.charAt(0).toUpperCase() + company.slice(1).toLowerCase();
+    } else {
+      const companyQuestion = await CompanyQuestion.findOne({ questionId });
+      const rawCompany = companyQuestion ? companyQuestion.company : 'general';
+      folderCompany = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+    }
     const questionTitle = question.title;
 
     try {
@@ -91,24 +98,24 @@ const saveSubmissionAndPush = async (userId, questionId, code, language) => {
       const repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
       if (repoExists) {
         // Verify company folder exists, auto-create if missing
-        const gitkeepPath = `${company}/.gitkeep`;
+        const gitkeepPath = `${folderCompany}/.gitkeep`;
         let folderExists = false;
         try {
           folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
         } catch (err) {
-          console.error(`Error checking folder existence during auto-sync for ${company}:`, err.message);
+          console.error(`Error checking folder existence during auto-sync for ${folderCompany}:`, err.message);
         }
 
         if (!folderExists) {
-          console.log(`Company folder for "${company}" does not exist. Creating automatically...`);
+          console.log(`Company folder for "${folderCompany}" does not exist. Creating automatically...`);
           try {
             const base64Content = Buffer.from('').toString('base64');
-            const commitMessage = `Initialize folder structure for ${company} (Auto-created)`;
+            const commitMessage = `Initialize folder structure for ${folderCompany} (Auto-created)`;
             await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
-            console.log(`Successfully created folder for "${company}".`);
+            console.log(`Successfully created folder for "${folderCompany}".`);
             folderExists = true;
           } catch (createErr) {
-            console.error(`Failed to automatically create company folder for ${company}:`, createErr.message);
+            console.error(`Failed to automatically create company folder for ${folderCompany}:`, createErr.message);
           }
         }
 
@@ -141,7 +148,7 @@ const saveSubmissionAndPush = async (userId, questionId, code, language) => {
           const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
           const cleanTitle = questionTitle.replace(/[^a-zA-Z0-9]/g, '');
           const filename = `${cleanTitle}.${ext}`;
-          const filePath = `${company}/${filename}`;
+          const filePath = `${folderCompany}/${filename}`;
 
           // Get existing file SHA if any
           let sha = null;

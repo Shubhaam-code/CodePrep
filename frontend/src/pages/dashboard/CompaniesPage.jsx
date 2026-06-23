@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Search, Building, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { FaSearch as Search, FaArrowRight as ArrowRight, FaCheckCircle as CheckCircle2, FaBuilding as Building } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import apiClient from '../../api/axios';
 

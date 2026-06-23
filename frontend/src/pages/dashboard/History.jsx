@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  History as HistoryIcon, Search, Trophy,
-  ArrowRight, CheckCircle,
-} from 'lucide-react';
+  FaClock as HistoryIcon, FaSearch as Search
+  ,FaArrowRight as ArrowRight
+} from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';

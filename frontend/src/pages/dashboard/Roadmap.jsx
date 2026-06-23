@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Map } from 'lucide-react';
+
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { updateSolvedQuestions } from '../../store/authSlice';
 import apiClient from '../../api/axios';

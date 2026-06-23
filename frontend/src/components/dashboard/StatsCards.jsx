@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Code2, Flame, Bookmark, Calendar } from 'lucide-react';
+import { FaCode as Code2, FaFire as Flame, FaBookmark as Bookmark, FaCalendar as Calendar } from 'react-icons/fa';
 
 const container = { hidden:{}, show:{ transition:{ staggerChildren:0.1 } } };
 const item = { hidden:{ opacity:0, y:20 }, show:{ opacity:1, y:0, transition:{ duration:0.5 } } };

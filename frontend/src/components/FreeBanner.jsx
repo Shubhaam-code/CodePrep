@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, Zap, Shield, Sparkles } from 'lucide-react';
+import { FaArrowRight as ArrowRight, FaFire as Zap, FaCircle as Shield, FaStar as Sparkles } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '../store/store';
 

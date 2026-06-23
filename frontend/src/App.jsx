@@ -12,6 +12,7 @@ import Roadmap from './pages/dashboard/Roadmap';
 import History from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
 import GVChallenge from './pages/dashboard/GVChallenge';
+import GitHubProfilePage from './pages/GitHubProfilePage';
 
 // Public only - redirect if logged in
 const PublicOnlyRoute = () => {
@@ -75,6 +76,10 @@ export default function App() {
           <Route 
             path="/topic/:topicName" 
             element={<TopicQuestions />} 
+          />
+          <Route 
+            path="/profile/github" 
+            element={<GitHubProfilePage />} 
           />
         </Route>
 

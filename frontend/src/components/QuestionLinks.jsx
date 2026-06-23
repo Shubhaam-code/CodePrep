@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { FaExternalLinkAlt as ExternalLink, FaSpinner as Loader2 } from 'react-icons/fa';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
@@ -41,8 +41,9 @@ function Toast({ message, type, onDone }) {
  *
  * @param {Object} props
  * @param {Object} props.question - The question document
+ * @param {string} [props.company] - Optional company name for submission context
  */
-export default function QuestionLinks({ question }) {
+export default function QuestionLinks({ question, company }) {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
 
@@ -67,7 +68,8 @@ export default function QuestionLinks({ question }) {
       const response = await apiClient.post('/api/submissions/solve', {
         questionId: question._id,
         language: 'javascript',
-        code: `// Solution for ${question.title} solved on CodePrep\n`
+        code: `// Solution for ${question.title} solved on CodePrep\n`,
+        company: company || null,
       });
 
       if (response.data.success) {

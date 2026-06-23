@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Search, Code2 } from 'lucide-react';
+import { FaSearch as Search, FaCode as Code2 } from 'react-icons/fa';
 import Sidebar from '../../components/dashboard/Sidebar';
 import axios from '../../api/axios';
 

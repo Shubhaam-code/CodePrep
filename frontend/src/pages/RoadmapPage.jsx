@@ -1,6 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Map, Flag, Compass, CheckCircle2, ChevronRight, ArrowRight } from 'lucide-react';
+import {
+  FaCodeBranch as Map, FaTrophy as Flag, FaSearch as Compass,
+  FaArrowRight as ChevronRight, FaArrowRight as ArrowRight
+} from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/dashboard/Sidebar';
 

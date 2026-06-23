@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import { FaArrowRight as ArrowRight } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 
 const companyColors = {

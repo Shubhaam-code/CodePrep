@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CheckCircle, Flame, Share2, ExternalLink, X,
-  Loader2, Trophy, Copy, Check
-} from 'lucide-react';
+  FaCheckCircle as CheckCircle, FaShare as Share2, FaExternalLinkAlt as ExternalLink, FaTimes as X,
+  FaSpinner as Loader2, FaCopy as Copy, FaCheck as Check , FaFire as Flame
+} from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppSelector } from '../../store/store';

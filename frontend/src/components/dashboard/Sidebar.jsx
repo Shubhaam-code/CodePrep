@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import {
-  Home, LayoutDashboard, Building, Trophy, Map, History, Settings, LogOut
-} from 'lucide-react';
+  FaHome as Home, FaTrophy as Trophy, FaCodeBranch as Map, FaClock as History, FaCog as Settings, FaArrowRight as LogOut,
+  FaBuilding as Building, FaCircle as LayoutDashboard, FaGithub as GithubIcon
+} from 'react-icons/fa';
 import { useAppDispatch, useAppSelector } from '../../store/store';
 import { logout } from '../../store/authSlice';
 
@@ -22,6 +23,11 @@ const NAV_ITEMS = [
     icon: Building, 
     label: "Company Questions", 
     path: "/dashboard/dsa" 
+  },
+  {
+    icon: GithubIcon,
+    label: "GitHub Sync",
+    path: "/profile/github"
   },
   { 
     icon: Trophy, 

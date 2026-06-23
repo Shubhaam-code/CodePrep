@@ -349,38 +349,45 @@ exports.getStats = async (req, res) => {
 
     const githubConnected = user.githubConnected || false;
     const repositoryName = githubConnected ? 'company-preparation' : null;
-    const totalSolvedQuestions = user.solvedQuestions.length;
 
-    // Calculate unique companies covered
-    const solvedQuestionIds = user.solvedQuestions.map(sq => sq.questionId);
-    const companyQuestions = await CompanyQuestion.find({
-      questionId: { $in: solvedQuestionIds }
-    });
+    // Retrieve all submissions for the logged-in user
+    const submissions = await Submission.find({ userId })
+      .sort({ submittedAt: -1 })
+      .populate('questionId');
+
+    // Extract unique question IDs from submissions
+    const solvedQuestionIds = [...new Set(submissions.map(sub => sub.questionId ? sub.questionId._id.toString() : null).filter(Boolean))];
+    const totalSolvedQuestions = solvedQuestionIds.length;
+
+    // Calculate unique companies covered directly from submission.company field
     const uniqueCompanies = new Set(
-      companyQuestions
-        .filter(cq => cq.company)
-        .map(cq => cq.company.toLowerCase().trim())
+      submissions
+        .filter(sub => sub.company)
+        .map(sub => sub.company.toLowerCase().trim())
     );
     const totalCompaniesCovered = uniqueCompanies.size;
 
-    // Fetch the last 5 submissions of this user populated with question details
-    const submissions = await Submission.find({ userId })
-      .sort({ submittedAt: -1 })
-      .limit(5)
-      .populate('questionId');
-
+    // Fetch the last 5 submissions with question details
     const recentSubmissions = [];
-    for (const sub of submissions) {
+    const limitSubmissions = submissions.slice(0, 5);
+    for (const sub of limitSubmissions) {
       if (!sub.questionId) continue;
-      const companyQuestion = await CompanyQuestion.findOne({ questionId: sub.questionId._id });
-      const rawCompany = companyQuestion ? companyQuestion.company : 'general';
-      const company = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+      // Use submission.company directly, fallback to CompanyQuestion lookup for old submissions
+      let displayCompany = 'General';
+      if (sub.company) {
+        displayCompany = sub.company.charAt(0).toUpperCase() + sub.company.slice(1).toLowerCase();
+      } else {
+        const companyQuestion = await CompanyQuestion.findOne({ questionId: sub.questionId._id });
+        if (companyQuestion) {
+          displayCompany = companyQuestion.company.charAt(0).toUpperCase() + companyQuestion.company.slice(1).toLowerCase();
+        }
+      }
       recentSubmissions.push({
         _id: sub._id,
         questionTitle: sub.questionId.title,
         language: sub.language,
         submittedAt: sub.submittedAt,
-        company
+        company: displayCompany
       });
     }
 
