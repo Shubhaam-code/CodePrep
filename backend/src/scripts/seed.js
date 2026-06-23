@@ -63,13 +63,15 @@ const upsertRow = async (row, company, timeframe, repo) => {
     acceptance   = getVal(row, 'acceptance');
     difficultyRaw= getVal(row, 'difficulty');
     frequencyRaw = getVal(row, 'frequency');
-    leetcodeUrl  = getVal(row, 'leetcode link') ||
-                   getVal(row, 'leetcodelink') ||
-                   getVal(row, 'link');
+    leetcodeUrl = getVal(row, 'leetcode question link') ||
+              getVal(row, 'leetcode link') ||
+              getVal(row, 'leetcodelink') ||
+              getVal(row, 'link');
   } else {
     idStr        = getVal(row, 'id');
-    leetcodeUrl  = getVal(row, 'leetcodeurl') ||
-                   getVal(row, 'leetcode url');
+        leetcodeUrl = getVal(row, 'url') ||
+              getVal(row, 'leetcodeurl') ||
+              getVal(row, 'leetcode url');
     title        = getVal(row, 'title');
     difficultyRaw= getVal(row, 'difficulty');
     acceptance   = getVal(row, 'acceptance') ||
@@ -83,12 +85,9 @@ const upsertRow = async (row, company, timeframe, repo) => {
 
   const difficulty = normalizeDifficulty(difficultyRaw);
   const frequency  = parseFloat(frequencyRaw) || 0;
-  const isPremium  = !!(leetcodeUrl && leetcodeUrl.includes('premium')) || leetcodeId > 2800;
+  const isPremium  = !!(leetcodeUrl && leetcodeUrl.includes('premium')) ;
 
-  const slug = makeSlug(title, leetcodeId);
-  const gfgUrl      = `https://www.geeksforgeeks.org/problems/${slug}`;
-  const neetcodeUrl = `https://neetcode.io/problems/${slug}`;
-  const youtubeUrl  = `https://www.youtube.com/results?search_query=${encodeURIComponent((title || `Question #${leetcodeId}`) + ' leetcode solution')}`;
+
 
   // Upsert Question
   const question = await Question.findOneAndUpdate(
@@ -100,9 +99,7 @@ const upsertRow = async (row, company, timeframe, repo) => {
       acceptance:  acceptance || '',
       leetcodeUrl: leetcodeUrl || '',
       isPremium,
-      gfgUrl,
-      neetcodeUrl,
-      youtubeUrl,
+      
     },
     { upsert: true, new: true, runValidators: true }
   );
@@ -122,7 +119,8 @@ const upsertRow = async (row, company, timeframe, repo) => {
 // ─────────────────────────────────────────────
 
 const REPO1_RAW  = 'https://raw.githubusercontent.com/krishnadey30/LeetCode-Questions-CompanyWise/master/';
-const REPO1_API  = 'https://api.github.com/repos/krishnadey30/LeetCode-Questions-CompanyWise/contents/';
+const REPO1_API =
+  'https://api.github.com/repos/krishnadey30/LeetCode-Questions-CompanyWise/contents/';
 
 /** Parse "google_alltime.csv" → { company: 'google', timeframe: 'alltime' } */
 const parseRepo1Filename = (name) => {

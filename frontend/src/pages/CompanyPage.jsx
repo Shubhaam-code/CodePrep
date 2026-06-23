@@ -1,5 +1,5 @@
 import React from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { updateSolvedQuestions, updateBookmarks } from '../store/authSlice';
@@ -21,6 +21,7 @@ function CompanyPage() {
   const { name } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
 
   // Read auth state from Redux
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
@@ -118,9 +119,12 @@ function CompanyPage() {
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-6">
       {/* Breadcrumb & Title */}
       <div className="space-y-2">
-        <Link to="/" className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition">
-          &larr; Back to Companies
-        </Link>
+        <button
+          onClick={() => navigate(-1)}
+          className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition flex items-center gap-1 cursor-pointer animate-fade-in"
+        >
+          ← Back
+        </button>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-100">
           {formatCompanyName(name)} Questions
         </h1>
@@ -139,11 +143,11 @@ function CompanyPage() {
             <button
               key={tab.value}
               onClick={() => setTimeframe(tab.value)}
-            className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              timeframe === tab.value
-                ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-bold shadow-lg shadow-[#FF7A00]/15'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
+              className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                timeframe === tab.value
+                  ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-bold shadow-lg shadow-[#FF7A00]/15'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
             >
               {tab.label}
             </button>
@@ -256,16 +260,13 @@ function CompanyPage() {
 
                       {/* Title */}
                       <td className="px-6 py-4">
-                        <Link
-                          to={`/dashboard/practice/${q._id}`}
-                          className={`font-semibold hover:text-[#FF7A00] transition-colors cursor-pointer ${
-                            isSolved
-                              ? 'line-through text-slate-500'
-                              : 'text-slate-200'
-                          }`}
-                        >
+                        <span className={`font-semibold ${
+                          isSolved
+                            ? 'line-through text-slate-500'
+                            : 'text-slate-200'
+                        }`}>
                           {q.title}
-                        </Link>
+                        </span>
                       </td>
 
                       {/* Difficulty Badge */}

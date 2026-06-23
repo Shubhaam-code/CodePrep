@@ -35,7 +35,8 @@ export default function CompanyTracker({ solvedByCompany = [] }) {
       ) : (
         <div className="space-y-4">
           {displayList.map((c, i) => {
-            const companyKey = c.company.toLowerCase().replace(/\s+/g, '_');
+            const companyKey = c.company.toLowerCase()
+                   .replace(/[\s-]+/g, '_')
             const color = companyColors[companyKey] || '#FF7A00';
             const pct = c.total > 0 ? Math.round((c.solved / c.total) * 100) : 0;
             return (

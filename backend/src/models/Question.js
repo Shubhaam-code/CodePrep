@@ -33,64 +33,9 @@ const QuestionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    gfgUrl: {
-      type: String,
-      default: '',
-    },
-    neetcodeUrl: {
-      type: String,
-      default: '',
-    },
-    youtubeUrl: {
-      type: String,
-      default: '',
-    },
-    fullContent: {
-      type: String,
-      default: '',
-    },
-    exampleTestcases: {
-      type: String,
-      default: '',
-    },
-    hints: {
-      type: [String],
-      default: [],
-    },
-    contentFetchedAt: {
-      type: Date,
-      default: null,
-    },
-    description: {
-      type: String,
-      default: '',
-    },
-    examples: [
-      {
-        input: String,
-        output: String,
-        explanation: String,
-      }
-    ],
-    constraints: [String],
-    starterCode: {
-      python: String,
-      javascript: String,
-      java: String,
-      cpp: String,
-    },
-    testCases: [
-      {
-        input: String,
-        expectedOutput: String,
-      }
-    ],
-    hiddenTestCases: [
-      {
-        input: String,
-        expectedOutput: String,
-      }
-    ]
+
+    
+    
   },
   {
     timestamps: true,

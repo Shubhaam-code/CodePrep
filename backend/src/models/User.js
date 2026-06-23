@@ -55,6 +55,26 @@ const UserSchema = new mongoose.Schema(
         default: null,
       },
     },
+    githubConnected: {
+      type: Boolean,
+      default: false,
+    },
+    githubUsername: {
+      type: String,
+      default: null,
+    },
+    githubProfileUrl: {
+      type: String,
+      default: null,
+    },
+    linkedinConnected: {
+      type: Boolean,
+      default: false,
+    },
+    linkedinProfileUrl: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -5,6 +5,41 @@ const authMiddleware = require('../middleware/auth');
 
 router.use(authMiddleware);
 
+router.get('/pattern', authMiddleware, 
+  async (req, res) => {
+    try {
+      const { keywords } = req.query
+      if (!keywords) return res.json([])
+      
+      const keywordList = keywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k.length > 0)
+      
+      if (keywordList.length === 0) 
+        return res.json([])
+      
+      const orConditions = keywordList.map(k => ({
+        title: { $regex: k, $options: 'i' }
+      }))
+      
+      const questions = await Question.find({
+        $or: orConditions
+      })
+      .select(
+        'leetcodeId title difficulty acceptance leetcodeUrl isPremium'
+      )
+      .sort({ difficulty: 1 })
+      .limit(50)
+      
+      res.json(questions)
+    } catch (err) {
+      console.error(err)
+      res.status(500).json({ message: 'Server error' })
+    }
+  }
+);
+
 const getKeywords = (topicName) => {
   const t = topicName.toLowerCase().trim();
   if (t === 'two sum' || t.includes('two sum') || t === 'subarray sums') {
@@ -78,38 +113,15 @@ router.get('/:leetcodeId/links', async (req, res) => {
       .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, '-');
 
-    const gfgUrl = `https://www.geeksforgeeks.org/problems/${slug}`;
-    const neetcodeUrl = `https://neetcode.io/problems/${slug}`;
-    const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(question.title + ' leetcode solution')}`;
-    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(question.title + ' leetcode solution site:geeksforgeeks.org OR site:neetcode.io')}`;
+
 
     res.status(200).json({
       isPremium: question.isPremium || false,
       leetcodeUrl: question.leetcodeUrl || '',
-      gfgUrl,
-      neetcodeUrl,
-      youtubeUrl,
-      googleUrl
+
     });
   } catch (error) {
     console.error('Error fetching alternative links:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/**
- * @route   GET /api/questions/:id
- * @desc    Get question by ID
- */
-router.get('/:id', async (req, res) => {
-  try {
-    const question = await Question.findById(req.params.id);
-    if (!question) {
-      return res.status(404).json({ message: 'Question not found' });
-    }
-    res.status(200).json(question);
-  } catch (error) {
-    console.error('Error fetching question by ID:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

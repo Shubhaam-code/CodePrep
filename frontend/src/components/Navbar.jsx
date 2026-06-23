@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, LogOut, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { FaGithub, FaLinkedin } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { logout } from '../store/authSlice';
 
 const navLinks = [
-  { label: 'Companies', href: '/dashboard/companies', icon: '🏢' },
-  { label: 'DSA Practice', href: '/dashboard/dsa', icon: '📚' },
-  { label: 'Mock Exam', href: '/dashboard/mock', icon: '🎯' },
-  { label: 'Arena', href: '/dashboard/arena', icon: '⚔️' },
+  { label: 'Company Questions', href: '/dashboard/dsa', icon: '🏢' },
+  { label: 'GV Challenge', href: '/dashboard/gvchallenge', icon: '🏆' },
+  { label: 'Roadmap', href: '/dashboard/roadmap', icon: '📚' },
+  { label: 'History', href: '/dashboard/history', icon: '⏳' },
 ];
 
 export default function Navbar() {
@@ -21,6 +22,16 @@ export default function Navbar() {
   const dispatch   = useAppDispatch();
 
   const { isAuthenticated, user } = useAppSelector((s) => s.auth);
+
+  const handleSocialClick = (provider) => {
+    if (provider === 'github') {
+      const url = user?.githubUrl || user?.githubProfileUrl || 'https://github.com';
+      window.open(url, '_blank');
+    } else if (provider === 'linkedin') {
+      const url = user?.linkedinUrl || user?.linkedinProfileUrl || 'https://linkedin.com';
+      window.open(url, '_blank');
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -46,6 +57,17 @@ export default function Navbar() {
     .toUpperCase()
     .slice(0, 2);
 
+  // Active checking logic including sub-pages (e.g. company profiles or roadmap topic questions)
+  const isLinkActive = (href) => {
+    if (href === '/dashboard/dsa') {
+      return location.pathname.startsWith('/dashboard/dsa') || location.pathname.startsWith('/company');
+    }
+    if (href === '/dashboard/roadmap') {
+      return location.pathname.startsWith('/dashboard/roadmap') || location.pathname.startsWith('/topic');
+    }
+    return location.pathname.startsWith(href);
+  };
+
   return (
     <>
       <motion.header
@@ -69,9 +91,9 @@ export default function Navbar() {
             {/* ── Logo ── */}
             <Link to="/" className="flex items-center gap-2.5 group shrink-0">
               <img
-                src="/CodePrepLogoHorizontal.svg"
+                src="/imagecopy.png"
                 alt="CodePrep AI"
-                className="h-9 w-auto object-contain transition-all duration-300 group-hover:scale-[1.03] group-hover:brightness-110"
+                className="h-13 sm:h-24 md:h-28 w-auto transition-all duration-300 group-hover:scale-[1.03] group-hover:brightness-110"
               />
             </Link>
 
@@ -79,7 +101,7 @@ export default function Navbar() {
             {isAuthenticated && (
               <nav className="hidden md:flex items-center gap-1">
                 {navLinks.map(({ label, href, icon }) => {
-                  const active = location.pathname.startsWith(href);
+                  const active = isLinkActive(href);
                   return (
                     <Link key={href} to={href}
                       className={`relative flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-lg transition-all duration-200 font-medium ${
@@ -108,6 +130,33 @@ export default function Navbar() {
 
             {/* ── Desktop Right Side ── */}
             <div className="hidden md:flex items-center gap-3">
+              {/* Social account connections */}
+              <div className="flex items-center gap-2 mr-1">
+                {/* GitHub */}
+                <button
+                  onClick={() => handleSocialClick('github')}
+                  title={user?.githubConnected ? "Open GitHub Profile" : "Connect GitHub"}
+                  className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200"
+                >
+                  <FaGithub size={17} className={user?.githubConnected ? "text-[#22C55E]" : ""} />
+                  {user?.githubConnected && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
+                  )}
+                </button>
+
+                {/* LinkedIn */}
+                <button
+                  onClick={() => handleSocialClick('linkedin')}
+                  title={user?.linkedinConnected ? "Open LinkedIn Profile" : "Connect LinkedIn"}
+                  className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200"
+                >
+                  <FaLinkedin size={17} className={user?.linkedinConnected ? "text-[#0077B5]" : ""} />
+                  {user?.linkedinConnected && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
+                  )}
+                </button>
+              </div>
+
               {isAuthenticated ? (
                 <>
                   {/* Avatar dropdown */}
@@ -221,6 +270,38 @@ export default function Navbar() {
               className="md:hidden overflow-hidden bg-[#0C0C14]/98 backdrop-blur-2xl border-b border-white/6"
             >
               <div className="px-5 py-4 space-y-1">
+                {/* Social account connections on mobile */}
+                <div className="flex items-center justify-around py-2.5 mb-3 border border-white/8 bg-white/4 rounded-xl">
+                  <span className="text-xs text-gray-400 font-semibold">Social Accounts</span>
+                  <div className="flex gap-4">
+                    {/* GitHub */}
+                    <button
+                      onClick={() => handleSocialClick('github')}
+                      title={user?.githubConnected ? "Open GitHub Profile" : "Connect GitHub"}
+                      className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200 flex items-center gap-1.5"
+                    >
+                      <FaGithub size={16} className={user?.githubConnected ? "text-[#22C55E]" : ""} />
+                      <span className="text-xs">{user?.githubConnected ? "GitHub" : "Connect"}</span>
+                      {user?.githubConnected && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
+                      )}
+                    </button>
+
+                    {/* LinkedIn */}
+                    <button
+                      onClick={() => handleSocialClick('linkedin')}
+                      title={user?.linkedinConnected ? "Open LinkedIn Profile" : "Connect LinkedIn"}
+                      className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200 flex items-center gap-1.5"
+                    >
+                      <FaLinkedin size={16} className={user?.linkedinConnected ? "text-[#0077B5]" : ""} />
+                      <span className="text-xs">{user?.linkedinConnected ? "LinkedIn" : "Connect"}</span>
+                      {user?.linkedinConnected && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
                 {isAuthenticated ? (
                   <>
                     {/* User header in mobile */}
@@ -234,21 +315,24 @@ export default function Navbar() {
                       </div>
                     </div>
 
-                    {navLinks.map(({ label, href, icon }) => (
-                      <Link key={href} to={href}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                          location.pathname.startsWith(href)
-                            ? 'text-white bg-[#FF7A00]/10 border border-[#FF7A00]/20'
-                            : 'text-gray-400 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <span>{icon}</span>
-                        <span>{label}</span>
-                        {location.pathname.startsWith(href) && (
-                          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FF7A00]" />
-                        )}
-                      </Link>
-                    ))}
+                    {navLinks.map(({ label, href, icon }) => {
+                      const active = isLinkActive(href);
+                      return (
+                        <Link key={href} to={href}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                            active
+                              ? 'text-white bg-[#FF7A00]/10 border border-[#FF7A00]/20'
+                              : 'text-gray-400 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          <span>{icon}</span>
+                          <span>{label}</span>
+                          {active && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#FF7A00]" />
+                          )}
+                        </Link>
+                      );
+                    })}
 
                     <div className="pt-2 border-t border-white/6 mt-2">
                       <button
@@ -292,6 +376,8 @@ export default function Navbar() {
           />
         )}
       </AnimatePresence>
+
+
     </>
   );
 }

@@ -32,6 +32,27 @@ function diffColor(d = '') {
   return { bg: 'rgba(234,179,8,0.1)', color: '#fbbf24', border: 'rgba(234,179,8,0.25)' };
 }
 
+function getLeetCodeUrl(q) {
+  if (!q) return '';
+  let url = q.leetcodeUrl || '';
+  if (!url) return '';
+  
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // Otherwise, it might be a text like "Two Sum - LeetCode"
+  let slug = url.replace(/\s*-\s*leetcode\s*/i, '').trim();
+  slug = slug
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+    
+  if (!slug) return '';
+  return `https://leetcode.com/problems/${slug}/`;
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ message, onDone }) {
   useEffect(() => {
@@ -100,6 +121,13 @@ export default function GVChallenge() {
 
   const currentDay = prog.totalCompleted + 1;
   const currentQuestion = questions[currentDay - 1] || null;
+
+  // Temporary logs to inspect the challenge object
+  useEffect(() => {
+    if (currentQuestion) {
+      console.log("Challenge:", currentQuestion);
+    }
+  }, [currentQuestion]);
 
   // Completed day numbers set
   const completedDayNums = new Set((prog.completedDays || []).map((c) => c.dayNumber));
@@ -172,7 +200,7 @@ export default function GVChallenge() {
       await apiClient.post('/api/gvchallenge/mark-complete', {
         dayNumber: currentDay,
         questionTitle: currentQuestion.title,
-        questionUrl: currentQuestion.leetcodeUrl,
+        questionUrl: getLeetCodeUrl(currentQuestion),
         solution,
         language,
         topic: currentQuestion.topic,
@@ -582,13 +610,32 @@ export default function GVChallenge() {
               {/* Open LeetCode button */}
               <button
                 onClick={() => {
-                  window.open(currentQuestion.leetcodeUrl, '_blank');
-                  setShowSolutionForm(true);
+                  const url = getLeetCodeUrl(currentQuestion);
+                  if (url) {
+                    window.open(url, '_blank');
+                    setShowSolutionForm(true);
+                  }
                 }}
-                className="cursor-pointer w-full py-3 rounded-xl font-semibold text-black text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 mb-4"
-                style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
+                disabled={!getLeetCodeUrl(currentQuestion)}
+                className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mb-4 ${
+                  getLeetCodeUrl(currentQuestion)
+                    ? 'cursor-pointer text-black hover:opacity-90'
+                    : 'cursor-not-allowed opacity-50 text-gray-400'
+                }`}
+                style={{
+                  background: getLeetCodeUrl(currentQuestion)
+                    ? 'linear-gradient(135deg, var(--orange), var(--secondary))'
+                    : 'var(--bg-hover)',
+                  border: getLeetCodeUrl(currentQuestion) ? 'none' : '1px solid var(--border)',
+                }}
               >
-                <ExternalLink size={15} /> Open on LeetCode →
+                {getLeetCodeUrl(currentQuestion) ? (
+                  <>
+                    <ExternalLink size={15} /> Open on LeetCode →
+                  </>
+                ) : (
+                  'Question link unavailable'
+                )}
               </button>
 
               {/* Solution form */}
@@ -759,19 +806,23 @@ export default function GVChallenge() {
                       </span>
 
                       <span>
-                        <button
-                          onClick={() => {
-                            window.open(q.leetcodeUrl, '_blank');
-                            if (isToday) {
-                              setShowSolutionForm(true);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }
-                          }}
-                          className="cursor-pointer text-sm font-medium hover:underline transition-all"
-                          style={{ color: 'var(--orange)' }}
-                        >
-                          Solve →
-                        </button>
+                        {getLeetCodeUrl(q) ? (
+                          <button
+                            onClick={() => {
+                              window.open(getLeetCodeUrl(q), '_blank');
+                              if (isToday) {
+                                setShowSolutionForm(true);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
+                            }}
+                            className="cursor-pointer text-sm font-medium hover:underline transition-all"
+                            style={{ color: 'var(--orange)' }}
+                          >
+                            Solve →
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-500 cursor-not-allowed">Unavailable</span>
+                        )}
                       </span>
                     </div>
                   );

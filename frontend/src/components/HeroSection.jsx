@@ -183,7 +183,7 @@ export default function HeroSection() {
           style={{ background: 'rgba(255,122,0,0.08)', border: '1px solid rgba(255,122,0,0.2)' }}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF7A00] animate-pulse" />
-          <span className="text-[10px] text-[#FFB800] font-semibold">2,000+ editorial solutions</span>
+          <span className="text-[10px] text-[#FFB800] font-semibold">FAANG & Top Tech Questions</span>
         </motion.div>
       </motion.div>
 

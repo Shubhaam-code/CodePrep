@@ -119,7 +119,7 @@ export default function FreeBanner() {
               transition={{ duration: 0.6, delay: 0.25 }}
               className="text-gray-400 text-base sm:text-lg max-w-xl mx-auto mb-10 leading-relaxed"
             >
-              Full access to 3,500+ company-wise questions, mock exams, progress
+              Full access to 3,500+ company-wise questions, learning roadmaps, progress
               tracking, and more — completely free, no strings attached.
             </motion.p>
 
@@ -179,11 +179,11 @@ export default function FreeBanner() {
                 viewport={{ once: true }}
                 transition={{ delay: 0.4 }}
               >
-                <Link to="/dashboard/companies"
+                <Link to="/dashboard/dsa"
                   className="group relative inline-flex items-center gap-2 text-base font-bold text-black px-8 py-3.5 rounded-xl overflow-hidden shadow-2xl shadow-[#FF7A00]/30 transition-transform hover:-translate-y-1"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-[#FF7A00] via-[#FFB800] to-[#FFD700]" />
-                  <span className="relative">Browse Companies</span>
+                  <span className="relative">Browse Company Questions</span>
                   <ArrowRight size={16} className="relative transition-transform group-hover:translate-x-1" />
                 </Link>
               </motion.div>

@@ -11,23 +11,13 @@ const companyRoutes = require('./routes/companies');
 const userRoutes = require('./routes/user');
 
 const questionRoutes = require('./routes/questions');
-const arenaRoutes = require('./routes/arena');
-const judgeRoutes = require('./routes/judge');
+
 const gvchallengeRoutes = require('./routes/gvchallenge');
 
 const app = express();
-const http = require('http');
-const server = http.createServer(app);
-const { Server } = require('socket.io');
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
 
-// Bind Socket.io logic
-require('./socket')(io);
+
+
 
 // Connect to MongoDB
 connectDB();
@@ -53,22 +43,12 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/user', userRoutes);
 
 app.use('/api/questions', questionRoutes);
-app.use('/api/arena', arenaRoutes);
-app.use('/api/judge', judgeRoutes);
+
 app.use('/api/gvchallenge', gvchallengeRoutes);
 
 // Arena Match History Endpoint (inline, no exam dependency)
 const authMiddleware = require('./middleware/auth');
 
-app.get('/api/history', authMiddleware, async (req, res) => {
-  try {
-    // Return empty array since exam sessions are removed
-    res.status(200).json([]);
-  } catch (error) {
-    console.error('Error fetching history:', error);
-    res.status(500).json({ message: 'Server error fetching history' });
-  }
-});
 
 // Serve frontend static build files in production mode
 if (process.env.NODE_ENV === 'production') {
@@ -85,6 +65,6 @@ app.use((err, req, res, next) => {
 
 // Listen on PORT
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

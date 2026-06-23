@@ -172,14 +172,16 @@ export default function TopicQuestions() {
 
                           {/* Title */}
                           <td className="px-6 py-4">
-                            <Link
-                              to={`/dashboard/practice/${q._id}`}
+                            <a
+                              href={q.leetcodeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className={`font-semibold hover:text-[#FF7A00] transition-colors cursor-pointer ${
                                 isSolved ? 'line-through text-gray-500 font-normal' : 'text-white'
                               }`}
                             >
                               {q.title}
-                            </Link>
+                            </a>
                           </td>
 
                           {/* Difficulty */}
