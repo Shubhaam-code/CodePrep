@@ -6,5 +6,6 @@ const authMiddleware = require('../middleware/auth');
 router.post('/create-repository', authMiddleware, githubRepositoryController.createPrepRepository);
 router.post('/create-company-folder', authMiddleware, githubRepositoryController.createCompanyFolder);
 router.post('/push-question', authMiddleware, githubRepositoryController.pushQuestion);
+router.get('/stats', authMiddleware, githubRepositoryController.getStats);
 
 module.exports = router;

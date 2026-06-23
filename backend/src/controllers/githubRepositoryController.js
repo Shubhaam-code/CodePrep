@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const Submission = require('../models/Submission');
+const CompanyQuestion = require('../models/CompanyQuestion');
 const githubRepositoryService = require('../services/githubRepositoryService');
 
 /**
@@ -325,6 +327,81 @@ exports.pushQuestion = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Internal Server Error',
+    });
+  }
+};
+
+/**
+ * Get GitHub Stats for the logged-in user.
+ * GET /api/github/stats
+ */
+exports.getStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    const githubConnected = user.githubConnected || false;
+    const repositoryName = githubConnected ? 'company-preparation' : null;
+    const totalSolvedQuestions = user.solvedQuestions.length;
+
+    // Calculate unique companies covered
+    const solvedQuestionIds = user.solvedQuestions.map(sq => sq.questionId);
+    const companyQuestions = await CompanyQuestion.find({
+      questionId: { $in: solvedQuestionIds }
+    });
+    const uniqueCompanies = new Set(
+      companyQuestions
+        .filter(cq => cq.company)
+        .map(cq => cq.company.toLowerCase().trim())
+    );
+    const totalCompaniesCovered = uniqueCompanies.size;
+
+    // Fetch the last 5 submissions of this user populated with question details
+    const submissions = await Submission.find({ userId })
+      .sort({ submittedAt: -1 })
+      .limit(5)
+      .populate('questionId');
+
+    const recentSubmissions = [];
+    for (const sub of submissions) {
+      if (!sub.questionId) continue;
+      const companyQuestion = await CompanyQuestion.findOne({ questionId: sub.questionId._id });
+      const rawCompany = companyQuestion ? companyQuestion.company : 'general';
+      const company = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+      recentSubmissions.push({
+        _id: sub._id,
+        questionTitle: sub.questionId.title,
+        language: sub.language,
+        submittedAt: sub.submittedAt,
+        company
+      });
+    }
+
+    // lastSyncAt is the submittedAt of the most recent submission if github is connected
+    const lastSyncAt = (githubConnected && submissions.length > 0)
+      ? submissions[0].submittedAt
+      : null;
+
+    return res.status(200).json({
+      githubConnected,
+      repositoryName,
+      totalSolvedQuestions,
+      totalCompaniesCovered,
+      lastSyncAt,
+      recentSubmissions
+    });
+  } catch (error) {
+    console.error('Error fetching github stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error'
     });
   }
 };
