@@ -1,0 +1,330 @@
+const User = require('../models/User');
+const githubRepositoryService = require('../services/githubRepositoryService');
+
+/**
+ * Check if the repository "company-preparation" exists, and create it if it does not.
+ * POST /api/github/create-repository
+ */
+exports.createPrepRepository = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    const token = user.githubAccessToken;
+    const username = user.githubUsername;
+
+    if (!token || !username || !user.githubConnected) {
+      return res.status(400).json({
+        success: false,
+        message: 'GitHub is not connected for this user.',
+      });
+    }
+
+    // 1. Check if the repository already exists
+    let repoExists = false;
+    try {
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+    } catch (err) {
+      console.error('Error checking repository existence:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to verify repository status with GitHub.',
+      });
+    }
+
+    if (repoExists) {
+      return res.status(200).json({
+        success: true,
+        repositoryCreated: false,
+        repositoryName: 'company-preparation',
+      });
+    }
+
+    // 2. Create the repository since it does not exist
+    try {
+      await githubRepositoryService.createRepository(token);
+      return res.status(201).json({
+        success: true,
+        repositoryCreated: true,
+        repositoryName: 'company-preparation',
+      });
+    } catch (err) {
+      console.error('Error creating repository:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to create repository on GitHub.',
+      });
+    }
+  } catch (error) {
+    console.error('Create repository endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+    });
+  }
+};
+
+/**
+ * Check if the repository exists, and create a company folder (Google/.gitkeep) if it doesn't.
+ * POST /api/github/create-company-folder
+ */
+exports.createCompanyFolder = async (req, res) => {
+  try {
+    const { company } = req.body;
+    if (!company || typeof company !== 'string' || !company.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bad Request: Company name is required.',
+      });
+    }
+
+    const sanitizedCompany = company.trim();
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    const token = user.githubAccessToken;
+    const username = user.githubUsername;
+
+    if (!token || !username || !user.githubConnected) {
+      return res.status(400).json({
+        success: false,
+        message: 'GitHub is not connected for this user.',
+      });
+    }
+
+    // 1. Verify if repository exists
+    let repoExists = false;
+    try {
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+    } catch (err) {
+      console.error('Error verifying repository:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to verify repository status on GitHub.',
+      });
+    }
+
+    if (!repoExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Repository "company-preparation" does not exist. Please create the repository first.',
+      });
+    }
+
+    // 2. Check if the folder (.gitkeep file) already exists
+    const gitkeepPath = `${sanitizedCompany}/.gitkeep`;
+    let folderExists = false;
+    try {
+      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+    } catch (err) {
+      console.error('Error checking folder existence:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to verify folder existence on GitHub.',
+      });
+    }
+
+    if (folderExists) {
+      return res.status(200).json({
+        success: true,
+        folderCreated: false,
+        company: sanitizedCompany,
+      });
+    }
+
+    // 3. Create the folder by creating a .gitkeep file
+    try {
+      const base64Content = Buffer.from('').toString('base64');
+      const commitMessage = `Initialize folder structure for ${sanitizedCompany}`;
+      await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
+
+      return res.status(201).json({
+        success: true,
+        folderCreated: true,
+        company: sanitizedCompany,
+      });
+    } catch (err) {
+      console.error('Error creating folder on GitHub:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: `Failed to create folder for ${sanitizedCompany} on GitHub.`,
+      });
+    }
+  } catch (error) {
+    console.error('Create company folder endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+    });
+  }
+};
+
+/**
+ * Commit a question solution to the GitHub repository under the company folder.
+ * POST /api/github/push-question
+ */
+exports.pushQuestion = async (req, res) => {
+  try {
+    const { company, questionTitle, language, code } = req.body;
+
+    if (!company || typeof company !== 'string' || !company.trim()) {
+      return res.status(400).json({ success: false, message: 'Bad Request: Company is required.' });
+    }
+    if (!questionTitle || typeof questionTitle !== 'string' || !questionTitle.trim()) {
+      return res.status(400).json({ success: false, message: 'Bad Request: Question title is required.' });
+    }
+    if (!language || typeof language !== 'string' || !language.trim()) {
+      return res.status(400).json({ success: false, message: 'Bad Request: Language is required.' });
+    }
+    if (code === undefined || code === null || typeof code !== 'string') {
+      return res.status(400).json({ success: false, message: 'Bad Request: Code content is required.' });
+    }
+
+    const sanitizedCompany = company.trim();
+    const sanitizedTitle = questionTitle.trim();
+    const sanitizedLang = language.trim();
+
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const token = user.githubAccessToken;
+    const username = user.githubUsername;
+
+    if (!token || !username || !user.githubConnected) {
+      return res.status(400).json({ success: false, message: 'GitHub is not connected for this user.' });
+    }
+
+    // 1. Verify if repository exists
+    let repoExists = false;
+    try {
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+    } catch (err) {
+      console.error('Error verifying repository:', err.response ? err.response.data : err.message);
+      return res.status(400).json({ success: false, message: 'Failed to verify repository status on GitHub.' });
+    }
+
+    if (!repoExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Repository "company-preparation" does not exist. Please create the repository first.',
+      });
+    }
+
+    // 2. Verify if company folder exists (indicated by {company}/.gitkeep), auto-create if missing
+    const gitkeepPath = `${sanitizedCompany}/.gitkeep`;
+    let folderExists = false;
+    try {
+      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+    } catch (err) {
+      console.error('Error verifying folder existence:', err.response ? err.response.data : err.message);
+      return res.status(400).json({ success: false, message: 'Failed to verify company folder status on GitHub.' });
+    }
+
+    if (!folderExists) {
+      console.log(`Company folder for "${sanitizedCompany}" does not exist on GitHub. Creating automatically...`);
+      try {
+        const base64Content = Buffer.from('').toString('base64');
+        const commitMessage = `Initialize folder structure for ${sanitizedCompany} (Auto-created)`;
+        await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
+        console.log(`Successfully created folder for "${sanitizedCompany}" on GitHub.`);
+        folderExists = true;
+      } catch (createErr) {
+        console.error(`Failed to automatically create company folder for ${sanitizedCompany}:`, createErr.response ? createErr.response.data : createErr.message);
+        return res.status(400).json({
+          success: false,
+          message: `Failed to automatically create company folder for "${sanitizedCompany}" on GitHub.`,
+        });
+      }
+    }
+
+    // 3. Generate filename
+    // Map language name to extension
+    const extensionMap = {
+      'cpp': 'cpp',
+      'c++': 'cpp',
+      'java': 'java',
+      'python': 'py',
+      'python3': 'py',
+      'javascript': 'js',
+      'js': 'js',
+      'typescript': 'ts',
+      'ts': 'ts',
+      'c': 'c',
+      'csharp': 'cs',
+      'c#': 'cs',
+      'go': 'go',
+      'rust': 'rs',
+      'ruby': 'rb',
+      'swift': 'swift',
+      'kotlin': 'kt',
+      'scala': 'scala',
+      'php': 'php',
+      'html': 'html',
+      'css': 'css',
+      'sql': 'sql'
+    };
+    
+    const ext = extensionMap[sanitizedLang.toLowerCase()] || sanitizedLang.toLowerCase();
+    const cleanTitle = sanitizedTitle.replace(/[^a-zA-Z0-9]/g, '');
+    const filename = `${cleanTitle}.${ext}`;
+    const filePath = `${sanitizedCompany}/${filename}`;
+
+    // 4. Check if the file already exists to retrieve its sha (for updating)
+    let sha = null;
+    try {
+      const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath);
+      if (fileDetails) {
+        sha = fileDetails.sha;
+      }
+    } catch (err) {
+      console.error('Error fetching file details:', err.response ? err.response.data : err.message);
+      return res.status(400).json({ success: false, message: 'Failed to verify file status on GitHub.' });
+    }
+
+    // 5. Commit/Push the file to GitHub
+    try {
+      const base64Content = Buffer.from(code).toString('base64');
+      const commitMessage = sha 
+        ? `Update solution for ${sanitizedTitle}` 
+        : `Add solution for ${sanitizedTitle}`;
+
+      await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha);
+
+      return res.status(200).json({
+        success: true,
+        fileCreated: true,
+        path: filePath,
+      });
+    } catch (err) {
+      console.error('Error committing file to GitHub:', err.response ? err.response.data : err.message);
+      return res.status(400).json({
+        success: false,
+        message: `Failed to commit solution file to GitHub.`,
+      });
+    }
+  } catch (error) {
+    console.error('Push question endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+    });
+  }
+};

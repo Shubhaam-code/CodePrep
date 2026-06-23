@@ -1,0 +1,42 @@
+const submissionService = require('../services/submissionService');
+
+/**
+ * Handle question solving submission and auto-syncing with GitHub.
+ * POST /api/submissions/solve
+ */
+exports.solveQuestion = async (req, res) => {
+  try {
+    const { questionId, code, language } = req.body;
+
+    if (!questionId) {
+      return res.status(400).json({ success: false, message: 'Bad Request: questionId is required.' });
+    }
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ success: false, message: 'Bad Request: code is required.' });
+    }
+    if (!language || typeof language !== 'string') {
+      return res.status(400).json({ success: false, message: 'Bad Request: language is required.' });
+    }
+
+    const userId = req.user.id;
+
+    const result = await submissionService.saveSubmissionAndPush(userId, questionId, code, language);
+
+    return res.status(200).json({
+      success: true,
+      submissionSaved: result.submissionSaved,
+      githubSynced: result.githubSynced,
+    });
+  } catch (error) {
+    console.error('Solve question submission error:', error);
+    
+    if (error.message === 'Question not found') {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+    });
+  }
+};

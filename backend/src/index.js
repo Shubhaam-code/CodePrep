@@ -9,6 +9,9 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const companyRoutes = require('./routes/companies');
 const userRoutes = require('./routes/user');
+const githubAuthRoutes = require('./routes/githubAuth');
+const githubRepositoryRoutes = require('./routes/githubRepository');
+const submissionRoutes = require('./routes/submissions');
 
 const questionRoutes = require('./routes/questions');
 
@@ -38,6 +41,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // Mount Routes
+app.use('/api/auth/github', githubAuthRoutes);
+app.use('/api/github', githubRepositoryRoutes);
+app.use('/api/submissions', submissionRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/user', userRoutes);
