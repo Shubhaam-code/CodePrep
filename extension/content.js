@@ -202,17 +202,62 @@ function checkSubmissionStatus() {
 
 function saveAcceptedStatus() {
   chrome.storage.local.get([currentProblemKey], (result) => {
-    if (!result[currentProblemKey] || result[currentProblemKey].status !== "Accepted") {
-      const data = {
-        status: "Accepted",
-        timestamp: new Date().toISOString()
-      };
-      chrome.storage.local.set({ [currentProblemKey]: data }, () => {
-        console.log(`LeetCode Tracker: Status set to Accepted for problem ${currentProblemKey}`);
-      });
+    const existing = result[currentProblemKey] || {};
+    
+    // Check if status is already Accepted and if it's already syncing/synced to prevent duplicate requests
+    if (existing.status === "Accepted" && (existing.syncState === "synced" || existing.syncState === "syncing")) {
+      return;
     }
+
+    console.log(`LeetCode Tracker [Auto Sync]: Accepted detected for ${currentProblemKey}`);
+
+    // Set temporary lock/state to "syncing"
+    const data = {
+      status: "Accepted",
+      syncState: "syncing",
+      timestamp: new Date().toISOString()
+    };
+
+    chrome.storage.local.set({ [currentProblemKey]: data }, () => {
+      console.log(`LeetCode Tracker [Auto Sync]: Status set to syncing for problem ${currentProblemKey}`);
+      
+      // Extract active editor details and problem metadata
+      getActiveCodeAndLanguage().then((codeInfo) => {
+        try {
+          const details = extractProblemDetails();
+          details.extractedCode = codeInfo.code;
+          details.extractedLanguage = codeInfo.language;
+
+          // Trigger background auto sync
+          chrome.runtime.sendMessage({
+            action: "triggerAutoSync",
+            problemKey: currentProblemKey,
+            payload: {
+              title: details.title,
+              url: details.url,
+              difficulty: details.difficulty,
+              status: "Accepted",
+              language: details.extractedLanguage,
+              code: details.extractedCode
+            }
+          });
+        } catch (error) {
+          console.error("LeetCode Tracker [Auto Sync]: Error preparing auto sync payload:", error);
+          // Set to failed in storage
+          chrome.storage.local.set({
+            [currentProblemKey]: {
+              status: "Accepted",
+              syncState: "failed",
+              syncError: error.message,
+              timestamp: new Date().toISOString()
+            }
+          });
+        }
+      });
+    });
   });
 }
+
 
 // Debounced MutationObserver to avoid performance lag on rapid typing / DOM updates
 let debounceTimer = null;
@@ -239,45 +284,7 @@ initializeSubmissionObserver();
 
 // --- Code Extraction MVP Logic ---
 
-// Inject script to access Monaco editor in page context
-function injectPageScript() {
-  console.log("LeetCode Tracker [Debug]: Injecting page context Monaco helper...");
-  const script = document.createElement('script');
-  script.textContent = `
-    (function() {
-      window.addEventListener('message', (event) => {
-        if (event.source !== window) return;
-        if (event.data && event.data.type === 'REQUEST_MONACO_CODE') {
-          try {
-            const models = window.monaco?.editor?.getModels();
-            if (models && models.length > 0) {
-              const codeModel = models.find(m => {
-                const lang = (m.getLanguageId?.() || m.getModeId?.() || "").toLowerCase();
-                return lang && lang !== 'markdown' && lang !== 'plaintext' && lang !== 'json';
-              }) || models[0];
 
-              window.postMessage({
-                type: 'RESPONSE_MONACO_CODE',
-                code: codeModel.getValue(),
-                languageId: codeModel.getLanguageId?.() || codeModel.getModeId?.()
-              }, '*');
-            } else {
-              window.postMessage({ type: 'RESPONSE_MONACO_CODE_FAILED' }, '*');
-            }
-          } catch (e) {
-            console.error('Monaco extraction error in page context:', e);
-            window.postMessage({ type: 'RESPONSE_MONACO_CODE_FAILED' }, '*');
-          }
-        }
-      });
-    })();
-  `;
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
-}
-
-// Call injection on script run
-injectPageScript();
 
 // Deep query selector that traverses shadow roots and accessible iframes
 function deepQuerySelector(selector) {
@@ -649,140 +656,166 @@ function getActiveCodeAndLanguage() {
     } catch (e) {
       console.error("LeetCode Tracker [Debug]: Error running DOM Inspector utility:", e);
     }
-    
-    // 1. Detect CodeMirror first (Primary Strategy)
-    const cmInstances = deepQuerySelectorAll('.cm-content');
-    if (cmInstances.length > 0) {
-      console.log(`Found CodeMirror instances: ${cmInstances.length}`);
-      
-      let activeCode = "";
-      let selectedIdx = -1;
-      
-      const candidates = cmInstances.map((inst, idx) => {
-        const text = inst.innerText || inst.textContent || "";
-        const rect = inst.getBoundingClientRect();
-        
-        let isVisible = rect.width > 0 && rect.height > 0;
-        try {
-          const style = window.getComputedStyle(inst);
-          if (style.display === 'none' || style.visibility === 'hidden') {
-            isVisible = false;
-          }
-        } catch (e) {}
-        
-        const isEditable = inst.getAttribute('contenteditable') === 'true' && inst.getAttribute('aria-readonly') !== 'true';
-        
-        console.log(`LeetCode Tracker [Debug]: CodeMirror instance [${idx}] - Length: ${text.length}, Editable: ${isEditable}, Visible: ${isVisible}`);
-        
-        return {
-          index: idx,
-          text: text,
-          length: text.length,
-          isEditable: isEditable,
-          isVisible: isVisible
-        };
-      });
-      
-      // Filter according to preferences:
-      // 1. Visible & Editable
-      let filtered = candidates.filter(c => c.isEditable && c.isVisible);
-      let strategy = "Visible & Editable";
-      
-      // 2. Fallback to Editable only if no Visible & Editable
-      if (filtered.length === 0) {
-        filtered = candidates.filter(c => c.isEditable);
-        strategy = "Editable only (Fallback)";
-      }
-      
-      // 3. Fallback to any if none editable
-      if (filtered.length === 0) {
-        filtered = candidates;
-        strategy = "All instances (Fallback)";
-      }
-      
-      if (filtered.length > 0) {
-        // Find the largest one
-        let best = filtered[0];
-        for (let i = 1; i < filtered.length; i++) {
-          if (filtered[i].length > best.length) {
-            best = filtered[i];
-          }
-        }
-        console.log("===== CANDIDATES =====");
 
-filtered.forEach(c => {
-  console.log({
-    index: c.index,
-    length: c.length,
-    preview: c.text.substring(0, 100)
-  });
-});
-        selectedIdx = best.index;
-        activeCode = best.text;
-        console.log(`LeetCode Tracker [Debug]: Selection strategy: ${strategy}`);
-      }
-      
-      console.log(`Selected editor index: ${selectedIdx}`);
-      console.log(`Code length: ${activeCode.length}`);
-      
-      const language = getDOMSelectedLanguage() || "Unknown";
-      console.log(`LeetCode Tracker [Debug]: Language detected = ${language}`);
-      
-      resolve({
-        code: activeCode,
-        language: language
-      });
+    const hasMonaco = deepQuerySelector('.monaco-editor') !== null;
+    console.log(`Monaco detected: ${hasMonaco}`);
+
+    if (hasMonaco) {
+      const handleMessage = (event) => {
+        if (event.source !== window) return;
+        if (event.data && event.data.type === 'RESPONSE_MONACO_CODE') {
+          window.removeEventListener('message', handleMessage);
+          clearTimeout(timeout);
+          const resolvedLang = mapLanguageId(event.data.languageId);
+          
+          console.log(`Models found: ${event.data.modelsCount}`);
+          console.log(`Selected model length: ${event.data.code.length}`);
+          
+          resolve({
+            code: event.data.code,
+            language: resolvedLang
+          });
+        } else if (event.data && event.data.type === 'RESPONSE_MONACO_CODE_FAILED') {
+          window.removeEventListener('message', handleMessage);
+          clearTimeout(timeout);
+          console.log(`Models found: 0`);
+          console.log("LeetCode Tracker [Debug]: Monaco model query failed in page context. Executing fallbacks.");
+          runFallbackFlow(resolve);
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', handleMessage);
+        console.warn("LeetCode Tracker [Debug]: Monaco code extraction response timed out (150ms). Executing fallbacks.");
+        runFallbackFlow(resolve);
+      }, 150);
+
+      // Inject the pageBridge.js file to execute in the page context safely
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('pageBridge.js');
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
       return;
     }
 
-    // 2. Fall back to Monaco Editor (via window messaging query)
-    console.log("LeetCode Tracker [Debug]: CodeMirror not found. Falling back to Monaco query...");
-    
-    const handleMessage = (event) => {
-      if (event.source !== window) return;
-      if (event.data && event.data.type === 'RESPONSE_MONACO_CODE') {
-        window.removeEventListener('message', handleMessage);
-        clearTimeout(timeout);
-        const resolvedLang = mapLanguageId(event.data.languageId);
-        
-        console.log(`LeetCode Tracker [Debug]: Monaco model code extracted. Length: ${event.data.code.length} | Language detected: ${resolvedLang}`);
-        resolve({
-          code: event.data.code,
-          language: resolvedLang
-        });
-      } else if (event.data && event.data.type === 'RESPONSE_MONACO_CODE_FAILED') {
-        window.removeEventListener('message', handleMessage);
-        clearTimeout(timeout);
-        console.log("LeetCode Tracker [Debug]: Monaco model query failed in page context. Executing Monaco DOM fallbacks.");
-        
-        const fallbackCode = getMonacoDOMFallback();
-        const fallbackLang = getDOMSelectedLanguage() || "Unknown";
-        
-        console.log(`LeetCode Tracker [Debug]: Monaco Fallback results - Code Length: ${fallbackCode.length} | Language detected: ${fallbackLang}`);
-        resolve({
-          code: fallbackCode,
-          language: fallbackLang
-        });
+    // Monaco not present, run fallback directly
+    runFallbackFlow(resolve);
+
+    function runFallbackFlow(resolvePromise) {
+      // Check if the currently focused element is a CodeMirror content area
+      let activeEl = document.activeElement;
+      let deepActiveEl = activeEl;
+      while (deepActiveEl && deepActiveEl.shadowRoot && deepActiveEl.shadowRoot.activeElement) {
+        deepActiveEl = deepActiveEl.shadowRoot.activeElement;
       }
-    };
 
-    window.addEventListener('message', handleMessage);
+      const hasCMClass = (el) => el && el.classList && el.classList.contains('cm-content');
 
-    const timeout = setTimeout(() => {
-      window.removeEventListener('message', handleMessage);
-      console.warn("LeetCode Tracker [Debug]: Monaco code extraction response timed out (150ms). Executing Monaco DOM fallbacks.");
-      
+      if (hasCMClass(activeEl) || hasCMClass(deepActiveEl)) {
+        const targetEl = hasCMClass(activeEl) ? activeEl : deepActiveEl;
+        console.log("LeetCode Tracker [Debug]: Active element is CodeMirror content area.");
+        const activeCode = targetEl.innerText || "";
+        const language = getDOMSelectedLanguage() || "Unknown";
+        
+        console.log(`Found CodeMirror instances: N/A (Using activeElement)`);
+        console.log(`Selected editor index: activeElement`);
+        console.log(`Code length: ${activeCode.length}`);
+        
+        resolvePromise({
+          code: activeCode,
+          language: language
+        });
+        return;
+      }
+
+      // Fallback: Scan all .cm-content instances
+      const cmInstances = deepQuerySelectorAll('.cm-content');
+      if (cmInstances.length > 0) {
+        console.log(`Found CodeMirror instances: ${cmInstances.length}`);
+        
+        let activeCode = "";
+        let selectedIdx = -1;
+        
+        const candidates = cmInstances.map((inst, idx) => {
+          const text = inst.innerText || inst.textContent || "";
+          const rect = inst.getBoundingClientRect();
+          
+          let isVisible = rect.width > 0 && rect.height > 0;
+          try {
+            const style = window.getComputedStyle(inst);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+              isVisible = false;
+            }
+          } catch (e) {}
+          
+          const isEditable = inst.getAttribute('contenteditable') === 'true' && inst.getAttribute('aria-readonly') !== 'true';
+          
+          console.log(`LeetCode Tracker [Debug]: CodeMirror instance [${idx}] - Length: ${text.length}, Editable: ${isEditable}, Visible: ${isVisible}`);
+          
+          return {
+            index: idx,
+            text: text,
+            length: text.length,
+            isEditable: isEditable,
+            isVisible: isVisible
+          };
+        });
+        
+        // Filter according to preferences:
+        // 1. Visible & Editable
+        let filtered = candidates.filter(c => c.isEditable && c.isVisible);
+        let strategy = "Visible & Editable";
+        
+        // 2. Fallback to Editable only if no Visible & Editable
+        if (filtered.length === 0) {
+          filtered = candidates.filter(c => c.isEditable);
+          strategy = "Editable only (Fallback)";
+        }
+        
+        // 3. Fallback to any if none editable
+        if (filtered.length === 0) {
+          filtered = candidates;
+          strategy = "All instances (Fallback)";
+        }
+        
+        if (filtered.length > 0) {
+          // Find the largest one
+          let best = filtered[0];
+          for (let i = 1; i < filtered.length; i++) {
+            if (filtered[i].length > best.length) {
+              best = filtered[i];
+            }
+          }
+          selectedIdx = best.index;
+          activeCode = best.text;
+          console.log(`LeetCode Tracker [Debug]: Selection strategy: ${strategy}`);
+        }
+        
+        console.log(`Selected editor index: ${selectedIdx}`);
+        console.log(`Code length: ${activeCode.length}`);
+        
+        const language = getDOMSelectedLanguage() || "Unknown";
+        console.log(`LeetCode Tracker [Debug]: Language detected = ${language}`);
+        
+        resolvePromise({
+          code: activeCode,
+          language: language
+        });
+        return;
+      }
+
+      // If no CodeMirror found at all, try Monaco DOM fallback
       const fallbackCode = getMonacoDOMFallback();
       const fallbackLang = getDOMSelectedLanguage() || "Unknown";
+      console.log(`LeetCode Tracker [Debug]: Monaco DOM Fallback results - Code Length: ${fallbackCode.length} | Language detected: ${fallbackLang}`);
       
-      console.log(`LeetCode Tracker [Debug]: Monaco Fallback results (Timeout) - Code Length: ${fallbackCode.length} | Language detected: ${fallbackLang}`);
-      resolve({
+      resolvePromise({
         code: fallbackCode,
         language: fallbackLang
       });
-    }, 150);
-
-    window.postMessage({ type: 'REQUEST_MONACO_CODE' }, '*');
+    }
   });
 }
 

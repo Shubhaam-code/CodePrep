@@ -36,6 +36,54 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateSyncButtonUI(syncState, syncError) {
+    if (!syncButton) return;
+    const btnTextEl = syncButton.querySelector(".btn-text");
+    const btnIconEl = syncButton.querySelector(".btn-icon");
+
+    if (syncState === "synced") {
+      syncButton.disabled = true;
+      if (btnTextEl) btnTextEl.textContent = "Synced";
+      if (btnIconEl) btnIconEl.textContent = "✅";
+      
+      if (syncFeedback) {
+        syncFeedback.textContent = "Synced to CodePrep successfully!";
+        syncFeedback.className = "sync-feedback success";
+        syncFeedback.classList.remove("hidden");
+      }
+    } else if (syncState === "syncing") {
+      syncButton.disabled = true;
+      if (btnTextEl) btnTextEl.textContent = "Syncing...";
+      if (btnIconEl) btnIconEl.textContent = "⌛";
+      if (syncFeedback) syncFeedback.classList.add("hidden");
+    } else if (syncState === "pending_auth") {
+      syncButton.disabled = false;
+      if (btnTextEl) btnTextEl.textContent = "Sync To CodePrep";
+      if (btnIconEl) btnIconEl.textContent = "🔄";
+      
+      if (syncFeedback) {
+        syncFeedback.textContent = syncError || "Please login to CodePrep website first.";
+        syncFeedback.className = "sync-feedback error";
+        syncFeedback.classList.remove("hidden");
+      }
+    } else if (syncState === "failed") {
+      syncButton.disabled = false;
+      if (btnTextEl) btnTextEl.textContent = "Sync To CodePrep";
+      if (btnIconEl) btnIconEl.textContent = "🔄";
+      
+      if (syncFeedback) {
+        syncFeedback.textContent = syncError || "Sync failed.";
+        syncFeedback.className = "sync-feedback error";
+        syncFeedback.classList.remove("hidden");
+      }
+    } else {
+      syncButton.disabled = false;
+      if (btnTextEl) btnTextEl.textContent = "Sync To CodePrep";
+      if (btnIconEl) btnIconEl.textContent = "🔄";
+      if (syncFeedback) syncFeedback.classList.add("hidden");
+    }
+  }
+
   function getProblemKey(urlStr) {
     try {
       const urlObj = new URL(urlStr);
@@ -53,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const newValue = changes[currentProblemKey].newValue;
       if (newValue && newValue.status === "Accepted") {
         updateSubmissionStatusDisplay("Accepted");
+        updateSyncButtonUI(newValue.syncState, newValue.syncError);
       }
     }
   });
@@ -81,8 +130,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // Resolve storage key and check initial submission status
     currentProblemKey = getProblemKey(url);
     chrome.storage.local.get([currentProblemKey], (result) => {
-      if (result[currentProblemKey] && result[currentProblemKey].status === "Accepted") {
+      const data = result[currentProblemKey];
+      if (data && data.status === "Accepted") {
         updateSubmissionStatusDisplay("Accepted");
+        updateSyncButtonUI(data.syncState, data.syncError);
       } else {
         updateSubmissionStatusDisplay("Not Accepted Yet");
       }
@@ -226,16 +277,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!activeQuestionData) return;
 
       // Enable loading state
-      syncButton.disabled = true;
-      const btnTextEl = syncButton.querySelector(".btn-text");
-      const btnIconEl = syncButton.querySelector(".btn-icon");
-      if (btnTextEl) btnTextEl.textContent = "Syncing...";
-      if (btnIconEl) btnIconEl.textContent = "⌛";
-
-      if (syncFeedback) {
-        syncFeedback.classList.add("hidden");
-        syncFeedback.className = "sync-feedback"; // reset classes
-      }
+      updateSyncButtonUI("syncing");
 
       // Payload configuration
       const payload = {
@@ -248,46 +290,67 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       // POST to backend API
-      fetch("http://localhost:5000/api/extension/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+      chrome.storage.local.get(["token"], (result) => {
+        const token = result.token;
+        if (!token) {
+          chrome.storage.local.get([currentProblemKey], (storeResult) => {
+            const data = storeResult[currentProblemKey] || { status: "Accepted" };
+            data.syncState = "pending_auth";
+            data.syncError = "Please login to CodePrep website first.";
+            chrome.storage.local.set({ [currentProblemKey]: data }, () => {
+              updateSyncButtonUI("pending_auth", data.syncError);
+            });
+          });
+          return;
         }
-        return response.json();
-      })
-      .then(res => {
-        // Success state
-        if (btnTextEl) btnTextEl.textContent = "Synced";
-        if (btnIconEl) btnIconEl.textContent = "✅";
-        
-        if (syncFeedback) {
-          if (res.saved) {
-            syncFeedback.textContent = "Synced to CodePrep successfully!";
-          } else {
-            syncFeedback.textContent = "Already synced to CodePrep!";
+
+        fetch("http://localhost:5000/api/extension/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        })
+        .then(async response => {
+          if (response.status === 401) {
+            throw new Error("Unauthorized. Please login to CodePrep website again.");
           }
-          syncFeedback.className = "sync-feedback success";
-          syncFeedback.classList.remove("hidden");
-        }
-      })
-      .catch(err => {
-        console.error("Sync to CodePrep failed:", err);
-        // Reset loading state and show error feedback
-        syncButton.disabled = false;
-        if (btnTextEl) btnTextEl.textContent = "Sync To CodePrep";
-        if (btnIconEl) btnIconEl.textContent = "🔄";
-        
-        if (syncFeedback) {
-          syncFeedback.textContent = `Sync failed: ${err.message}`;
-          syncFeedback.className = "sync-feedback error";
-          syncFeedback.classList.remove("hidden");
-        }
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(res => {
+          chrome.storage.local.get([currentProblemKey], (storeResult) => {
+            const data = storeResult[currentProblemKey] || { status: "Accepted" };
+            data.syncState = "synced";
+            delete data.syncError;
+            chrome.storage.local.set({ [currentProblemKey]: data }, () => {
+              updateSyncButtonUI("synced");
+            });
+          });
+        })
+        .catch(err => {
+          console.error("Sync to CodePrep failed:", err);
+          chrome.storage.local.get([currentProblemKey], (storeResult) => {
+            const data = storeResult[currentProblemKey] || { status: "Accepted" };
+            
+            let state = "failed";
+            let errorMsg = `Sync failed: ${err.message}`;
+            if (err.message.includes("login") || err.message.includes("Unauthorized")) {
+              state = "pending_auth";
+              errorMsg = "Please login to CodePrep website first.";
+            }
+
+            data.syncState = state;
+            data.syncError = errorMsg;
+            chrome.storage.local.set({ [currentProblemKey]: data }, () => {
+              updateSyncButtonUI(state, errorMsg);
+            });
+          });
+        });
       });
     });
   }

@@ -77,6 +77,10 @@ const saveSubmissionAndPush = async (userId, questionId, code, language, company
 
   let githubSynced = false;
 
+  console.log("GitHub Connected:", user.githubConnected);
+console.log("GitHub Username:", user.githubUsername);
+console.log("Has Token:", !!user.githubAccessToken);
+
   // 4. Automatically invoke GitHub push if GitHub is connected
   if (user.githubConnected && user.githubAccessToken && user.githubUsername) {
     const token = user.githubAccessToken;

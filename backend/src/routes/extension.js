@@ -3,14 +3,16 @@ const router = express.Router();
 const ExtensionSubmission = require('../models/ExtensionSubmission');
 const Question = require('../models/Question');
 const User = require('../models/User');
+const CompanyQuestion = require('../models/CompanyQuestion');
 const submissionService = require('../services/submissionService');
+const authMiddleware = require('../middleware/auth');
 
 /**
  * @route   POST /api/extension/sync
  * @desc    Receive, validate, and save problem metadata synced from the browser extension
  * @access  Public (MVP Endpoint)
  */
-router.post('/sync', async (req, res) => {
+router.post('/sync', authMiddleware, async (req, res) => {
   try {
     const { title, url, difficulty, status, language, code } = req.body;
 
@@ -73,20 +75,30 @@ router.post('/sync', async (req, res) => {
     }
 
     if (!question) {
-      console.error(`❌ Extension sync error: Question not found with title "${title}"`);
-      return res.status(404).json({
+      console.warn(`⚠️ Rejecting sync: Question "${title}" does not exist in collection.`);
+      return res.status(400).json({
         success: false,
-        error: `Question not found with title: "${title}"`
+        error: 'Question is not part of CodePrep company preparation database'
       });
     }
 
-    // 4. Find the system User
-    const user = await User.findOne();
+    // Verify it belongs to at least one CompanyQuestion mapping
+    const isCompanyMapped = await CompanyQuestion.exists({ questionId: question._id });
+    if (!isCompanyMapped) {
+      console.warn(`⚠️ Rejecting sync: Question "${title}" is not mapped to any company.`);
+      return res.status(400).json({
+        success: false,
+        error: 'Question is not part of CodePrep company preparation database'
+      });
+    }
+
+    // 4. Find the user from authenticated request
+    const user = await User.findById(req.user.id);
     if (!user) {
-      console.error(`❌ Extension sync error: No User found in system.`);
+      console.error(`❌ Extension sync error: User not found with ID ${req.user.id}`);
       return res.status(404).json({
         success: false,
-        error: 'No active user found in system.'
+        error: 'Authenticated user not found.'
       });
     }
 
