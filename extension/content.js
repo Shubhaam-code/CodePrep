@@ -124,8 +124,10 @@ function capitalize(str) {
 // --- Submission Detection Logic ---
 
 // Global active problem key
+// Global active problem key and locks
 let currentProblemKey = getProblemKey(window.location.href);
 let lastUrl = window.location.href;
+const activeSyncLocks = new Set();
 
 // Normalize helper for problem key
 function getProblemKey(url) {
@@ -145,8 +147,34 @@ setInterval(() => {
     lastUrl = window.location.href;
     currentProblemKey = getProblemKey(lastUrl);
     console.log("LeetCode Tracker: URL change detected, updated problem key:", currentProblemKey);
+    extractCompanyFromUrl();
   }
 }, 1000);
+
+function extractCompanyFromUrl() {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const company = urlParams.get('company');
+    if (company) {
+      console.log(`[Auto Sync] Found company context in URL: ${company}`);
+      chrome.storage.local.get([currentProblemKey], (result) => {
+        const existing = result[currentProblemKey] || {};
+        if (existing.company !== company) {
+          chrome.storage.local.set({
+            [currentProblemKey]: {
+              ...existing,
+              company: company
+            }
+          }, () => {
+            console.log(`[Auto Sync] Cached company context "${company}" for ${currentProblemKey}`);
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.error("[Auto Sync] Error extracting company from URL:", e);
+  }
+}
 
 function checkSubmissionStatus() {
   // 1. Check data-e2e-locator="submission-result" first
@@ -201,11 +229,22 @@ function checkSubmissionStatus() {
 }
 
 function saveAcceptedStatus() {
+  if (activeSyncLocks.has(currentProblemKey)) {
+    console.log(`[Auto Sync] Duplicate trigger prevented for ${currentProblemKey}`);
+    return;
+  }
+
+  // Acquire lock synchronously before starting async operations
+  activeSyncLocks.add(currentProblemKey);
+  console.log(`[Auto Sync] Lock acquired for ${currentProblemKey}`);
+
   chrome.storage.local.get([currentProblemKey], (result) => {
     const existing = result[currentProblemKey] || {};
     
     // Check if status is already Accepted and if it's already syncing/synced to prevent duplicate requests
     if (existing.status === "Accepted" && (existing.syncState === "synced" || existing.syncState === "syncing")) {
+      activeSyncLocks.delete(currentProblemKey);
+      console.log(`[Auto Sync] Lock released for ${currentProblemKey} (already processed/processing)`);
       return;
     }
 
@@ -229,7 +268,11 @@ function saveAcceptedStatus() {
           details.extractedLanguage = codeInfo.language;
 
           // Trigger background auto sync
+          const companyFromUrl = new URLSearchParams(window.location.search).get("company");
+          console.log("CURRENT URL:", window.location.href);
+          console.log("COMPANY FROM URL:", companyFromUrl);
           chrome.runtime.sendMessage({
+            
             action: "triggerAutoSync",
             problemKey: currentProblemKey,
             payload: {
@@ -238,11 +281,25 @@ function saveAcceptedStatus() {
               difficulty: details.difficulty,
               status: "Accepted",
               language: details.extractedLanguage,
-              code: details.extractedCode
+              code: details.extractedCode,
+              company: companyFromUrl
+            }
+          }, (response) => {
+            // Release lock once background script returns response
+            activeSyncLocks.delete(currentProblemKey);
+            console.log(`[Auto Sync] Lock released for ${currentProblemKey}`);
+            
+            if (chrome.runtime.lastError) {
+              console.warn("[Auto Sync] Error receiving background response:", chrome.runtime.lastError.message);
             }
           });
         } catch (error) {
           console.error("LeetCode Tracker [Auto Sync]: Error preparing auto sync payload:", error);
+          
+          // Release lock on error
+          activeSyncLocks.delete(currentProblemKey);
+          console.log(`[Auto Sync] Lock released for ${currentProblemKey}`);
+
           // Set to failed in storage
           chrome.storage.local.set({
             [currentProblemKey]: {
@@ -281,6 +338,7 @@ function initializeSubmissionObserver() {
 
 // Start observing on injection
 initializeSubmissionObserver();
+extractCompanyFromUrl();
 
 // --- Code Extraction MVP Logic ---
 

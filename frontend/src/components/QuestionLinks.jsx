@@ -53,11 +53,21 @@ export default function QuestionLinks({ question, company }) {
   if (!question) return null;
 
   const leetcodeLink = question.leetcodeUrl || '';
+  console.log("QUESTION LINKS COMPANY:", company);
 
   // Check if the question is already solved
   const isSolved = user?.solvedQuestions?.some(
     (sq) => sq.questionId === question._id
   );
+
+  const handleOpenProblem = () => {
+    if (!leetcodeLink) return;
+    const separator = leetcodeLink.includes('?') ? '&' : '?';
+    const targetUrl = company
+      ? `${leetcodeLink}${separator}company=${encodeURIComponent(company)}`
+      : leetcodeLink;
+    window.open(targetUrl, '_blank');
+  };
 
   const handleMarkSolved = async () => {
     if (isLoading) return;
@@ -101,7 +111,7 @@ export default function QuestionLinks({ question, company }) {
       >
         {leetcodeLink ? (
           <button
-            onClick={() => window.open(leetcodeLink, '_blank')}
+            onClick={handleOpenProblem}
             className="cursor-pointer w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white transition-all hover:opacity-85 shadow-md shadow-[#FF7A00]/15"
             style={{ background: '#FF7A00' }}
           >

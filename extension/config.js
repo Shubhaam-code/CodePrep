@@ -34,12 +34,14 @@ const activeSettings = RAW_CONFIG[activeEnv] || RAW_CONFIG.development;
 // 2. Perform security validations on active settings
 if (activeEnv === "production") {
   if (activeSettings.API_BASE_URL && !activeSettings.API_BASE_URL.startsWith("https://")) {
-    console.warn(`[CodePrep Config] Security Warning: Production API base URL (${activeSettings.API_BASE_URL}) is not secure (HTTPS).`);
+    throw new Error(`[CodePrep Config] Security Error: Production API base URL (${activeSettings.API_BASE_URL}) must use secure HTTPS connection.`);
   }
   if (activeSettings.FRONTEND_URL && !activeSettings.FRONTEND_URL.startsWith("https://")) {
-    console.warn(`[CodePrep Config] Security Warning: Production Frontend URL (${activeSettings.FRONTEND_URL}) is not secure (HTTPS).`);
+    throw new Error(`[CodePrep Config] Security Error: Production Frontend URL (${activeSettings.FRONTEND_URL}) must use secure HTTPS connection.`);
   }
 }
+
+console.log(`[CodePrep Config] Active environment: ${activeEnv}`);
 
 // 3. Expose active configuration
 const CONFIG = {

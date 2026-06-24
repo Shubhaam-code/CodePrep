@@ -290,8 +290,11 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       // POST to backend API
-      chrome.storage.local.get(["token"], (result) => {
+      chrome.storage.local.get(["token", currentProblemKey], (result) => {
         const token = result.token;
+        const problemData = result[currentProblemKey] || {};
+        const company = problemData.company || null;
+
         if (!token) {
           chrome.storage.local.get([currentProblemKey], (storeResult) => {
             const data = storeResult[currentProblemKey] || { status: "Accepted" };
@@ -304,13 +307,18 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        const syncPayload = {
+          ...payload,
+          company:  payload.company
+        };
+
         fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(syncPayload)
         })
         .then(async response => {
           if (response.status === 401) {

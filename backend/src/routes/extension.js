@@ -14,7 +14,15 @@ const authMiddleware = require('../middleware/auth');
  */
 router.post('/sync', authMiddleware, async (req, res) => {
   try {
-    const { title, url, difficulty, status, language, code } = req.body;
+    const { title, url, difficulty, status, language, code, company } = req.body;
+    console.log("REQ BODY COMPANY:", req.body.company);
+    console.log("DESTRUCTURED COMPANY:", company);
+
+    console.log("REQ BODY:", req.body);
+    console.log("========================================");
+    console.log("COMPANY RECEIVED:", company);
+    console.log("TITLE RECEIVED:", title);
+    console.log("========================================");
 
     // 1. Input Validation
     if (!title || typeof title !== 'string' || !title.trim()) {
@@ -42,6 +50,9 @@ router.post('/sync', authMiddleware, async (req, res) => {
     }
     if (code === undefined || typeof code !== 'string') {
       return res.status(400).json({ success: false, error: 'Code content is required and must be a string.' });
+    }
+    if (company !== undefined && company !== null && typeof company !== 'string') {
+      return res.status(400).json({ success: false, error: 'Company context must be a string.' });
     }
 
     console.log('\n========================================');
@@ -103,11 +114,15 @@ router.post('/sync', authMiddleware, async (req, res) => {
     }
 
     // 5. Call existing submission service (solve logic)
+    console.log("QUESTION:", question.title);
+    console.log("QUESTION ID:", question._id.toString());
+    console.log("COMPANY:", company);
     const result = await submissionService.saveSubmissionAndPush(
       user._id,
       question._id,
       code,
-      language
+      language,
+      company || null
     );
 
     // 6. Save to MongoDB (ExtensionSubmission history)

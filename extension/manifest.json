@@ -9,7 +9,12 @@
     "scripting"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://leetcode.com/*",
+    "https://*.leetcode.com/*",
+    "https://api.codeprep.com/*",
+    "https://codeprep.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -23,7 +28,7 @@
         "https://leetcode.com/problems/*",
         "https://*.leetcode.com/problems/*"
       ],
-      "js": ["content.js"],
+      "js": ["config.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

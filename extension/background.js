@@ -16,7 +16,7 @@ async function setupDynamicContentScript() {
       }
       
       // 2. Determine matches based on FRONTEND_URL
-      let matches = ["http://localhost/*", "http://127.0.0.1/*"];
+      let matches = [];
       if (CONFIG.FRONTEND_URL) {
         try {
           const url = new URL(CONFIG.FRONTEND_URL);
@@ -29,6 +29,11 @@ async function setupDynamicContentScript() {
       
       // Remove duplicate matches
       matches = Array.from(new Set(matches));
+
+      if (matches.length === 0) {
+        console.warn("[background.js] No matches resolved for dynamic content script registration. Skipping registration.");
+        return;
+      }
 
       console.log("[background.js] Registering dynamic content script for matches:", matches);
 
@@ -45,6 +50,9 @@ async function setupDynamicContentScript() {
     }
   } catch (error) {
     console.error("[background.js] Failed to register dynamic content script:", error);
+    if (error.message && (error.message.includes("Permission denied") || error.message.includes("permission"))) {
+      console.warn("[background.js] Permission warning: Make sure the target domain is included in the manifest.json host_permissions array.");
+    }
   }
 }
 
@@ -77,10 +85,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   } else if (request.action === "triggerAutoSync") {
     const { problemKey, payload } = request;
+    console.log("BACKGROUND PAYLOAD COMPANY:", payload.company);
+    console.log("FULL PAYLOAD:", payload);
     console.log(`LeetCode Tracker [Auto Sync]: Auto sync started for URL: ${payload.url}`);
 
-    chrome.storage.local.get(["token"], (result) => {
+    chrome.storage.local.get(["token", problemKey], (result) => {
       const token = result.token;
+      const problemData = result[problemKey] || {};
+      const company = problemData.company || null;
+
       if (!token) {
         console.error(`LeetCode Tracker [Auto Sync]: Auto sync failed for URL: ${payload.url}. Error: Please login to CodePrep website first.`);
         chrome.storage.local.get([problemKey], (problemResult) => {
@@ -99,13 +112,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
+      const syncPayload = {
+        ...payload,
+        company:  payload.company
+      };
+      console.log("REQUEST BODY SENT TO BACKEND:");
+      console.log(JSON.stringify(payload, null, 2));
+      console.log("PAYLOAD COMPANY:", payload?.company);
+      console.log("SYNC PAYLOAD COMPANY:", syncPayload?.company);
       fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(syncPayload)
       })
       .then(async (response) => {
         if (response.status === 401) {

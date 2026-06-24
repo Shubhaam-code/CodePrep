@@ -332,7 +332,7 @@ function CompanyPage() {
 
                       {/* External Leetcode Link */}
                       <td className="px-6 py-4 text-center">
-                        <QuestionLinks question={q} company={formatCompanyName(name)} />
+                        <QuestionLinks question={q} company={name} />
                       </td>
                     </tr>
                   );
