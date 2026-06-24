@@ -16,15 +16,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // Submission Status Elements
   const submissionStatus = document.getElementById("submission-status");
   let currentProblemKey = null;
+  
+  // Sync Elements
+  const syncContainer = document.getElementById("sync-container");
+  const syncButton = document.getElementById("sync-button");
+  const syncFeedback = document.getElementById("sync-feedback");
+  let activeQuestionData = null;
 
   function updateSubmissionStatusDisplay(status) {
     if (!submissionStatus) return;
     if (status === "Accepted") {
       submissionStatus.textContent = "Accepted";
       submissionStatus.className = "status-value accepted";
+      if (syncContainer) syncContainer.classList.remove("hidden");
     } else {
       submissionStatus.textContent = "Not Accepted Yet";
       submissionStatus.className = "status-value not-accepted";
+      if (syncContainer) syncContainer.classList.add("hidden");
     }
   }
 
@@ -114,6 +122,9 @@ document.addEventListener("DOMContentLoaded", () => {
     inactiveState.classList.add("hidden");
     activeState.classList.remove("hidden");
 
+    // Save active question metadata for the sync payload
+    activeQuestionData = data;
+
     // Display question ID if available
     if (data.leetcodeId) {
       questionId.textContent = `#${data.leetcodeId}`;
@@ -139,6 +150,35 @@ document.addEventListener("DOMContentLoaded", () => {
       difficultyPill.style.display = "inline-block";
     } else {
       difficultyPill.style.display = "none";
+    }
+
+    // Render Code Preview Details (MVP)
+    const codeLang = document.getElementById("code-lang");
+    const codeLength = document.getElementById("code-length");
+    const codePreview = document.getElementById("code-preview");
+
+    console.log("LeetCode Tracker: Rendering code details in popup:", {
+      lang: data.extractedLanguage,
+      codeLen: data.extractedCode ? data.extractedCode.length : 0
+    });
+
+    if (codeLang) {
+      codeLang.textContent = data.extractedLanguage || "Unknown";
+    }
+    if (codeLength) {
+      const len = data.extractedCode ? data.extractedCode.length : 0;
+      codeLength.textContent = `${len} chars`;
+    }
+    if (codePreview) {
+      if (data.extractedCode && data.extractedCode.trim()) {
+        const cleanCode = data.extractedCode.trim();
+        const previewText = cleanCode.length > 100 
+          ? cleanCode.substring(0, 100) + "\n..." 
+          : cleanCode;
+        codePreview.textContent = previewText;
+      } else {
+        codePreview.textContent = "No code draft found in editor.";
+      }
     }
   }
 
@@ -178,5 +218,77 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       return urlStr;
     }
+  }
+
+  // Add Event Listener to the Sync Button
+  if (syncButton) {
+    syncButton.addEventListener("click", () => {
+      if (!activeQuestionData) return;
+
+      // Enable loading state
+      syncButton.disabled = true;
+      const btnTextEl = syncButton.querySelector(".btn-text");
+      const btnIconEl = syncButton.querySelector(".btn-icon");
+      if (btnTextEl) btnTextEl.textContent = "Syncing...";
+      if (btnIconEl) btnIconEl.textContent = "⌛";
+
+      if (syncFeedback) {
+        syncFeedback.classList.add("hidden");
+        syncFeedback.className = "sync-feedback"; // reset classes
+      }
+
+      // Payload configuration
+      const payload = {
+        title: activeQuestionData.title,
+        url: activeQuestionData.url,
+        difficulty: activeQuestionData.difficulty || "Unknown",
+        status: "Accepted",
+        language: activeQuestionData.extractedLanguage || "Unknown",
+        code: activeQuestionData.extractedCode || ""
+      };
+
+      // POST to backend API
+      fetch("http://localhost:5000/api/extension/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(res => {
+        // Success state
+        if (btnTextEl) btnTextEl.textContent = "Synced";
+        if (btnIconEl) btnIconEl.textContent = "✅";
+        
+        if (syncFeedback) {
+          if (res.saved) {
+            syncFeedback.textContent = "Synced to CodePrep successfully!";
+          } else {
+            syncFeedback.textContent = "Already synced to CodePrep!";
+          }
+          syncFeedback.className = "sync-feedback success";
+          syncFeedback.classList.remove("hidden");
+        }
+      })
+      .catch(err => {
+        console.error("Sync to CodePrep failed:", err);
+        // Reset loading state and show error feedback
+        syncButton.disabled = false;
+        if (btnTextEl) btnTextEl.textContent = "Sync To CodePrep";
+        if (btnIconEl) btnIconEl.textContent = "🔄";
+        
+        if (syncFeedback) {
+          syncFeedback.textContent = `Sync failed: ${err.message}`;
+          syncFeedback.className = "sync-feedback error";
+          syncFeedback.classList.remove("hidden");
+        }
+      });
+    });
   }
 });

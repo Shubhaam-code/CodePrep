@@ -16,6 +16,7 @@ const submissionRoutes = require('./routes/submissions');
 const questionRoutes = require('./routes/questions');
 
 const gvchallengeRoutes = require('./routes/gvchallenge');
+const extensionRoutes = require('./routes/extension');
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/questions', questionRoutes);
 
 app.use('/api/gvchallenge', gvchallengeRoutes);
+app.use('/api/extension', extensionRoutes);
 
 // Arena Match History Endpoint (inline, no exam dependency)
 const authMiddleware = require('./middleware/auth');

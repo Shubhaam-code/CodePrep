@@ -41,6 +41,26 @@
             <span class="status-label">Status:</span>
             <span id="submission-status" class="status-value not-accepted">Not Accepted Yet</span>
           </div>
+          <!-- Code Draft Preview Area (MVP) -->
+          <div class="code-preview-container">
+            <div class="section-label">Code Draft Preview</div>
+            <div class="code-card">
+              <div class="code-header">
+                <span class="code-lang-badge" id="code-lang">Unknown</span>
+                <span class="code-length" id="code-length">0 chars</span>
+              </div>
+              <pre class="code-preview" id="code-preview">No code extracted.</pre>
+            </div>
+          </div>
+
+          <!-- Sync Area (Visible only when Status = Accepted) -->
+          <div id="sync-container" class="sync-container hidden">
+            <button id="sync-button" class="btn btn-primary">
+              <span class="btn-icon">🔄</span>
+              <span class="btn-text">Sync To CodePrep</span>
+            </button>
+            <div id="sync-feedback" class="sync-feedback hidden"></div>
+          </div>
         </div>
         <div class="extensible-footer-info">
           <span>🎯 Extensible Architecture: Ready for GitHub sync & submission tracking</span>
