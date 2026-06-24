@@ -67,7 +67,7 @@ export default function GitHubProfilePage() {
   }, [dispatch, refetch]);
 
   const handleReconnect = () => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+    const baseUrl = import.meta.env.VITE_API_URL;
     const token = localStorage.getItem('token');
     const connectUrl = `${baseUrl}/api/auth/github?token=${token}`;
     window.open(connectUrl, 'GitHub Connect', 'width=600,height=600');

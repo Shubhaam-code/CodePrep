@@ -1,3 +1,8 @@
+console.log("[CodePrep Extension] contentCodePrep.js loaded");
+console.log("[CodePrep Extension] Current URL:", location.href);
+document.documentElement.setAttribute("data-extension-installed", "true");
+console.log("[CodePrep Extension] Extension marker injected");
+
 // contentCodePrep.js - Injected into the CodePrep website (localhost)
 (function() {
   let lastToken = localStorage.getItem('token');
@@ -24,5 +29,13 @@
       chrome.runtime.sendMessage({ action: "storeToken", token: lastToken || null });
     }
   }, 5000);
+
+  // Handshake listener: listen for CODEPREP_PING and reply with CODEPREP_PONG
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data && event.data.type === 'CODEPREP_PING') {
+      window.postMessage({ type: 'CODEPREP_PONG' }, '*');
+    }
+  });
 })();
 

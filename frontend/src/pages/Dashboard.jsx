@@ -1,15 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, animate } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   FaCode as Code2, FaBookmark as Bookmark, FaCalendar as Calendar,
   FaArrowRight as ArrowRight, FaExternalLinkAlt as ExternalLink, FaCodeBranch as GitBranch,
   FaCheckCircle as CheckCircle2, FaExclamationCircle as AlertCircle, FaSpinner as Loader2,
-  FaGithub as Github, FaFire as Flame
+  FaGithub as Github, FaFire as Flame, FaPuzzlePiece
 } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
-import { useAppSelector } from '../store/store';
+import { useAppSelector, useAppDispatch } from '../store/store';
+import { setUser } from '../store/authSlice';
 import Sidebar from '../components/dashboard/Sidebar';
 
 /* ─────────────────────────────────────────────
@@ -256,6 +257,161 @@ function GVChallengeCard({ streak }) {
 }
 
 /* ─────────────────────────────────────────────
+   Extension Status Widget
+───────────────────────────────────────────── */
+function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
+  const navigate = useNavigate();
+  const { user } = useAppSelector((s) => s.auth);
+
+  const { data } = useQuery({
+    queryKey: ['githubStats'],
+    queryFn: () => apiClient.get('/api/github/stats').then((r) => r.data),
+    staleTime: 30 * 1000,
+  });
+
+  const githubConnected = user?.githubConnected || false;
+  const recentSubmissions = data?.recentSubmissions || [];
+
+  // 1. Last sync details
+  const lastSyncedTitle = recentSubmissions[0]?.questionTitle || 'None';
+  const lastSyncedTime = recentSubmissions[0]?.submittedAt 
+    ? timeAgo(recentSubmissions[0]?.submittedAt) 
+    : 'Never';
+
+  // 2. Auto Sync Status logic
+  let autoSyncStatusText = 'Ready ✅';
+  let autoSyncStatusClass = 'bg-green-500/10 text-green-400 border border-green-500/20';
+  
+  if (!extensionConnected) {
+    autoSyncStatusText = 'Extension Missing ❌';
+    autoSyncStatusClass = 'bg-red-500/10 text-red-400 border border-red-500/20';
+  } else if (!githubConnected) {
+    autoSyncStatusText = 'Waiting Login ⚠️';
+    autoSyncStatusClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+  }
+
+  // 3. GitHub repository link
+  const repoName = data?.repositoryName || 'company-preparation';
+  const repoUrl = user?.githubUsername 
+    ? `https://github.com/${user.githubUsername}/${repoName}`
+    : '#';
+
+  return (
+    <div
+      className="rounded-xl p-5 transition-all space-y-4"
+      style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/5 pb-3">
+        <h3 className="text-white font-extrabold text-sm flex items-center gap-2">
+          <FaPuzzlePiece className="text-[#FF7A00]" size={15} /> Extension Status
+        </h3>
+        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${autoSyncStatusClass}`}>
+          {autoSyncStatusText}
+        </span>
+      </div>
+
+      {/* Warnings */}
+      {!extensionConnected && (
+        <div className="bg-red-950/20 border border-red-950/50 text-red-400 rounded-xl p-3 text-[11px] leading-relaxed">
+          ⚠️ Auto-sync is inactive. Please install or enable the extension.
+        </div>
+      )}
+      {extensionConnected && !githubConnected && (
+        <div className="bg-amber-950/20 border border-amber-950/50 text-amber-400 rounded-xl p-3 text-[11px] leading-relaxed">
+          ⚠️ Connect GitHub in settings to backup your code.
+        </div>
+      )}
+
+      {/* Status Indicators */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-500 font-medium">Extension Installed</span>
+          {extensionConnected ? (
+            <span className="text-green-400 font-bold flex items-center gap-1">
+              Connected ✅
+            </span>
+          ) : (
+            <span className="text-red-400 font-bold flex items-center gap-1">
+              Not Connected ❌
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-500 font-medium">GitHub Status</span>
+          {githubConnected ? (
+            <span className="text-green-400 font-bold flex items-center gap-1">
+              Connected ✅
+            </span>
+          ) : (
+            <span className="text-red-400 font-bold flex items-center gap-1">
+              Not Connected ❌
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Sync Performance Details */}
+      <div className="bg-white/[0.01] border border-white/5 rounded-xl p-3.5 space-y-2.5 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-500">Last Synced Question</span>
+          <span className="font-semibold text-white truncate max-w-[150px]" title={lastSyncedTitle}>
+            {lastSyncedTitle}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Last Sync Time</span>
+          <span className="font-semibold text-gray-300">
+            {lastSyncedTime}
+          </span>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="pt-2 border-t border-white/5 space-y-2">
+        <div className="flex gap-2">
+          <a
+            href={githubConnected ? repoUrl : '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex-1 py-2 text-center text-[10px] font-extrabold rounded-lg border transition flex items-center justify-center gap-1.5 ${
+              githubConnected
+                ? 'text-gray-300 border-white/10 bg-white/[0.02] hover:bg-white/[0.06] hover:text-white'
+                : 'text-gray-600 border-white/5 bg-transparent cursor-not-allowed pointer-events-none'
+            }`}
+          >
+            Open Repository
+          </a>
+          <button
+            onClick={() => navigate('/dashboard/dsa')}
+            className="flex-1 py-2 text-center text-[10px] font-extrabold text-gray-300 border border-white/10 bg-white/[0.02] hover:bg-white/[0.06] hover:text-white rounded-lg transition"
+          >
+            Open Companies Page
+          </button>
+        </div>
+        {!githubConnected && (
+          <button
+            onClick={handleReconnect}
+            className="cursor-pointer w-full py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-[10px] text-black rounded-lg transition text-center shadow shadow-[#FF7A00]/5"
+          >
+            Connect GitHub
+          </button>
+        )}
+        {githubConnected && (
+          <button
+            onClick={handleReconnect}
+            className="cursor-pointer w-full py-2 text-[10px] font-extrabold text-gray-400 hover:text-white bg-transparent hover:bg-white/5 border border-white/5 rounded-lg transition text-center"
+          >
+            Reconnect GitHub
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    GitHub Sync Stats Card
 ───────────────────────────────────────────── */
 function GitHubStatsCard(props) {
@@ -452,7 +608,70 @@ const SIDEBAR_W = 220;
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const { user }  = useAppSelector((s) => s.auth);
+  
+  const [extensionConnected, setExtensionConnected] = useState(false);
+
+  // 1. Extension Handshake: Poll every 2 seconds for presence of companion extension
+  useEffect(() => {
+    let lastPongReceived = 0;
+    
+    const handlePongMessage = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type === 'CODEPREP_PONG') {
+        setExtensionConnected(true);
+        lastPongReceived = Date.now();
+      }
+    };
+
+    window.addEventListener('message', handlePongMessage);
+
+    // Initial ping
+    window.postMessage({ type: 'CODEPREP_PING' }, '*');
+
+    // Interval to send ping and check for timeout
+    const interval = setInterval(() => {
+      window.postMessage({ type: 'CODEPREP_PING' }, '*');
+      
+      // If we received a pong, and it has been more than 5 seconds since the last pong, set disconnected
+      if (lastPongReceived > 0 && Date.now() - lastPongReceived > 5000) {
+        setExtensionConnected(false);
+      }
+    }, 2000);
+
+    return () => {
+      window.removeEventListener('message', handlePongMessage);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // 2. Listen for mock OAuth success messages from GitHub popup window
+  useEffect(() => {
+    const handleOAuthMessage = async (event) => {
+      if (event.data?.type === 'oauth-success' && event.data?.provider === 'github') {
+        try {
+          console.log('[Dashboard] GitHub OAuth succeeded. Syncing user profile details...');
+          const profileRes = await apiClient.get('/api/auth/me');
+          dispatch(setUser(profileRes.data));
+          queryClient.invalidateQueries(['githubStats']);
+          queryClient.invalidateQueries(['dashboard']);
+        } catch (err) {
+          console.error('[Dashboard] Failed to sync profile details:', err);
+        }
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [dispatch, queryClient]);
+
+  const handleReconnectGithub = () => {
+    const baseUrl = import.meta.env.VITE_API_URL;
+    const token = localStorage.getItem('token');
+    const connectUrl = `${baseUrl}/api/auth/github?token=${token}`;
+    window.open(connectUrl, 'GitHub Connect', 'width=600,height=600');
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
@@ -515,6 +734,21 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
+              {user && !user.isOnboarded && (
+                <div className="mx-6 mt-6 bg-amber-950/15 border border-amber-900/30 rounded-xl p-4 text-xs text-amber-400 flex items-center justify-between gap-4">
+                  <span className="flex items-center gap-2">
+                    <AlertCircle size={14} className="shrink-0" />
+                    Complete setup to enable automatic sync.
+                  </span>
+                  <Link
+                    to="/onboarding"
+                    className="cursor-pointer text-[10px] font-extrabold text-black bg-gradient-to-r from-[#FF7A00] to-[#FFB800] px-3 py-1.5 rounded-lg transition hover:opacity-90 shrink-0 uppercase"
+                  >
+                    Complete Setup
+                  </Link>
+                </div>
+              )}
+
               {/* ── Stats row ── */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-6 pt-6">
                 <StatCard
@@ -649,9 +883,13 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Right: Daily Challenge & GitHub Stats */}
+                  {/* Right: Daily Challenge, Extension Status & GitHub Stats */}
                   <div className="lg:col-span-1 space-y-6">
                     <GVChallengeCard streak={streak} />
+                    <ExtensionStatusCard
+                      extensionConnected={extensionConnected}
+                      handleReconnect={handleReconnectGithub}
+                    />
                     <GitHubStatsCard />
                   </div>
                 </div>

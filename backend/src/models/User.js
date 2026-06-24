@@ -59,6 +59,10 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isOnboarded: {
+      type: Boolean,
+      default: false,
+    },
     githubUsername: {
       type: String,
       default: null,

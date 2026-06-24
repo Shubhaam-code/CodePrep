@@ -1,8 +1,60 @@
 // background.js - Service Worker for LeetCode Tracker Companion
+importScripts('config.js');
+
+
+async function setupDynamicContentScript() {
+  try {
+    const scriptId = "codeprep-content-script";
+    
+    // 1. Unregister if already exists to prevent duplicate ID errors
+    if (typeof chrome.scripting.getRegisteredContentScripts === "function") {
+      const scripts = await chrome.scripting.getRegisteredContentScripts();
+      const exists = scripts.some(s => s.id === scriptId);
+      if (exists) {
+        await chrome.scripting.unregisterContentScripts({ ids: [scriptId] });
+        console.log("[background.js] Unregistered existing dynamic content script.");
+      }
+      
+      // 2. Determine matches based on FRONTEND_URL
+      let matches = ["http://localhost/*", "http://127.0.0.1/*"];
+      if (CONFIG.FRONTEND_URL) {
+        try {
+          const url = new URL(CONFIG.FRONTEND_URL);
+          // Match the base domain and any path on it (Chrome match patterns reject port numbers)
+          matches.push(`${url.protocol}//${url.hostname}/*`);
+        } catch (e) {
+          console.error("[background.js] Failed to parse CONFIG.FRONTEND_URL:", e);
+        }
+      }
+      
+      // Remove duplicate matches
+      matches = Array.from(new Set(matches));
+
+      console.log("[background.js] Registering dynamic content script for matches:", matches);
+
+      // 3. Register content script
+      await chrome.scripting.registerContentScripts([
+        {
+          id: scriptId,
+          matches: matches,
+          js: ["contentCodePrep.js"],
+          runAt: "document_idle"
+        }
+      ]);
+      console.log("[background.js] Successfully registered dynamic content script.");
+    }
+  } catch (error) {
+    console.error("[background.js] Failed to register dynamic content script:", error);
+  }
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("LeetCode Tracker Companion Extension Installed.");
+  setupDynamicContentScript();
 });
+
+// Run setup immediately on service worker start
+setupDynamicContentScript();
 
 // Extensibility: Placeholder for handling messages between the content script,
 // popup, and the local backend server (e.g. syncing submissions or authenticating).
@@ -47,7 +99,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      fetch("http://localhost:5000/api/extension/sync", {
+      fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

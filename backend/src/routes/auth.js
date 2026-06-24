@@ -51,7 +51,8 @@ router.post('/register', async (req, res) => {
         githubUsername: savedUser.githubUsername,
         githubProfileUrl: savedUser.githubProfileUrl,
         linkedinConnected: savedUser.linkedinConnected,
-        linkedinProfileUrl: savedUser.linkedinProfileUrl
+        linkedinProfileUrl: savedUser.linkedinProfileUrl,
+        isOnboarded: savedUser.isOnboarded
       }
     });
   } catch (error) {
@@ -101,7 +102,8 @@ router.post('/login', async (req, res) => {
         githubUsername: user.githubUsername,
         githubProfileUrl: user.githubProfileUrl,
         linkedinConnected: user.linkedinConnected,
-        linkedinProfileUrl: user.linkedinProfileUrl
+        linkedinProfileUrl: user.linkedinProfileUrl,
+        isOnboarded: user.isOnboarded
       }
     });
   } catch (error) {
@@ -193,7 +195,8 @@ router.post('/firebase', async (req, res) => {
         githubUsername: user.githubUsername,
         githubProfileUrl: user.githubProfileUrl,
         linkedinConnected: user.linkedinConnected,
-        linkedinProfileUrl: user.linkedinProfileUrl
+        linkedinProfileUrl: user.linkedinProfileUrl,
+        isOnboarded: user.isOnboarded
       }
     });
   } catch (error) {
@@ -422,6 +425,43 @@ router.get('/linkedin/callback', async (req, res) => {
   } catch (error) {
     console.error('LinkedIn callback error:', error);
     res.status(500).send('Internal Server Error');
+  }
+});
+
+/**
+ * @route   POST /api/auth/onboarding/complete
+ * @desc    Mark onboarding as completed for current user
+ * @access  Private
+ */
+router.post('/onboarding/complete', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    user.isOnboarded = true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        solvedQuestions: user.solvedQuestions,
+        bookmarks: user.bookmarks,
+        streak: user.streak,
+        githubConnected: user.githubConnected,
+        githubUsername: user.githubUsername,
+        githubProfileUrl: user.githubProfileUrl,
+        linkedinConnected: user.linkedinConnected,
+        linkedinProfileUrl: user.linkedinProfileUrl,
+        isOnboarded: user.isOnboarded
+      }
+    });
+  } catch (error) {
+    console.error('Onboarding completion error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

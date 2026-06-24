@@ -304,7 +304,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        fetch("http://localhost:5000/api/extension/sync", {
+        fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

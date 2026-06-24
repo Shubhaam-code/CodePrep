@@ -13,6 +13,7 @@ import History from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
 import GVChallenge from './pages/dashboard/GVChallenge';
 import GitHubProfilePage from './pages/GitHubProfilePage';
+import Onboarding from './pages/Onboarding';
 
 // Public only - redirect if logged in
 const PublicOnlyRoute = () => {
@@ -24,14 +25,35 @@ const PublicOnlyRoute = () => {
     : <Outlet />;
 };
 
-// Protected - redirect if not logged in
+// Protected - redirect if not logged in. If not onboarded and hasn't skipped, redirect to onboarding.
 const ProtectedRoute = () => {
-  const isAuthenticated = useAppSelector(
-    s => s.auth.isAuthenticated
-  );
-  return isAuthenticated 
-    ? <Outlet /> 
-    : <Navigate to="/login" replace />;
+  const { isAuthenticated, user } = useAppSelector(s => s.auth);
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  const skippedOnboarding = sessionStorage.getItem('onboarding_skipped') === 'true';
+  if (user && !user.isOnboarded && !skippedOnboarding) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  return <Outlet />;
+};
+
+// Onboarding - requires login, but only accessible if onboarding is incomplete.
+const OnboardingRoute = () => {
+  const { isAuthenticated, user } = useAppSelector(s => s.auth);
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (user && user.isOnboarded) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <Outlet />;
 };
 
 export default function App() {
@@ -45,6 +67,11 @@ export default function App() {
         <Route element={<PublicOnlyRoute />}>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+        </Route>
+
+        {/* Onboarding route - requires auth but only for incomplete onboarding */}
+        <Route element={<OnboardingRoute />}>
+          <Route path="/onboarding" element={<Onboarding />} />
         </Route>
 
         {/* Protected - redirect if not logged in */}
