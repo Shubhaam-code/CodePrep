@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+console.log("GitHub Token:", process.env.GITHUB_TOKEN ? "✅ Loaded" : "❌ Missing");
 
 const fetch = require('node-fetch');
 const { parse } = require('csv-parse/sync');
@@ -187,6 +188,7 @@ const REPO2_TIMEFRAME_MAP = {
   'all.csv':          'alltime',
   'thirty-days.csv':  '1month',
   'three-months.csv': '3months',
+  'more-than-six-months.csv': '6months',
   'six-months.csv':   '6months',
   'one-year.csv':     '1year',
 };
@@ -278,7 +280,7 @@ const run = async () => {
     await connectDB();
     console.log('🚀 Starting seed...\n');
 
-    await seedRepo1();
+    // await seedRepo1();
     await seedRepo2();
 
     const totalQuestions = await Question.countDocuments();

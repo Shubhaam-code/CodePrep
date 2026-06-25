@@ -65,11 +65,24 @@ function extractProblemDetails() {
   // Extract Difficulty
   const difficulty = findDifficulty();
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const company = urlParams.get('company') || null;
+  const challenge = urlParams.get('challenge') || null;
+  const dayStr = urlParams.get('day');
+  const day = dayStr ? Number(dayStr) : null;
+  const pattern = urlParams.get('pattern') || null;
+  const sheet = urlParams.get('sheet') || null;
+
   return {
     leetcodeId,
     title: cleanTitle || rawTitle || "Unknown Question",
     url,
     difficulty: difficulty || "Unknown",
+    company,
+    challenge,
+    day,
+    pattern,
+    sheet,
     timestamp: new Date().toISOString()
   };
 }
@@ -141,38 +154,65 @@ function getProblemKey(url) {
   return `leetcode_problem_${url}`;
 }
 
+function getSyncContext(payload) {
+  if (!payload) return 'general';
+  if (payload.challenge === 'gv' && payload.day !== undefined && payload.day !== null) {
+    return `gv_day${payload.day}`;
+  }
+  if (payload.company) {
+    return `company_${payload.company}`;
+  }
+  if (payload.pattern) {
+    return `pattern_${payload.pattern}`;
+  }
+  if (payload.sheet) {
+    return `sheet_${payload.sheet}`;
+  }
+  return 'general';
+}
+
 // Watch for client-side routing changes in LeetCode (SPA)
 setInterval(() => {
   if (window.location.href !== lastUrl) {
     lastUrl = window.location.href;
     currentProblemKey = getProblemKey(lastUrl);
     console.log("LeetCode Tracker: URL change detected, updated problem key:", currentProblemKey);
-    extractCompanyFromUrl();
+    extractMetadataFromUrl();
   }
 }, 1000);
 
-function extractCompanyFromUrl() {
+function extractMetadataFromUrl() {
   try {
     const urlParams = new URLSearchParams(window.location.search);
-    const company = urlParams.get('company');
-    if (company) {
-      console.log(`[Auto Sync] Found company context in URL: ${company}`);
-      chrome.storage.local.get([currentProblemKey], (result) => {
-        const existing = result[currentProblemKey] || {};
-        if (existing.company !== company) {
-          chrome.storage.local.set({
-            [currentProblemKey]: {
-              ...existing,
-              company: company
-            }
-          }, () => {
-            console.log(`[Auto Sync] Cached company context "${company}" for ${currentProblemKey}`);
-          });
-        }
+
+    // Always read current URL params — absent params resolve to null (never preserve stale values)
+    const company   = urlParams.get('company')   || null;
+    const challenge = urlParams.get('challenge') || null;
+    const dayStr    = urlParams.get('day');
+    const day       = dayStr ? Number(dayStr) : null;
+    const pattern   = urlParams.get('pattern')   || null;
+    const sheet     = urlParams.get('sheet')     || null;
+
+    console.log(`[Auto Sync] URL metadata parsed — company: ${company}, challenge: ${challenge}, day: ${day}, pattern: ${pattern}, sheet: ${sheet}`);
+
+    // Always overwrite stored metadata with the current page's values,
+    // so stale context from a previous page is never carried forward.
+    chrome.storage.local.get([currentProblemKey], (result) => {
+      const existing = result[currentProblemKey] || {};
+      const updated = {
+        ...existing,
+        company,
+        challenge,
+        day,
+        pattern,
+        sheet,
+      };
+      chrome.storage.local.set({ [currentProblemKey]: updated }, () => {
+        console.log(`[Auto Sync] Metadata overwritten for ${currentProblemKey}:`, { company, challenge, day, pattern, sheet });
       });
-    }
+    });
   } catch (e) {
-    console.error("[Auto Sync] Error extracting company from URL:", e);
+    console.error("[Auto Sync] Error extracting metadata from URL:", e);
   }
 }
 
@@ -241,24 +281,60 @@ function saveAcceptedStatus() {
   chrome.storage.local.get([currentProblemKey], (result) => {
     const existing = result[currentProblemKey] || {};
     
+    const urlParams = new URLSearchParams(window.location.search);
+    const companyFromUrl = urlParams.get("company");
+    const challengeFromUrl = urlParams.get("challenge");
+    const dayFromUrl = urlParams.get("day") ? Number(urlParams.get("day")) : null;
+    const patternFromUrl = urlParams.get("pattern");
+    const sheetFromUrl = urlParams.get("sheet");
+
+    const finalCompany = companyFromUrl || existing.company || null;
+    const finalChallenge = challengeFromUrl || existing.challenge || null;
+    const finalDay = (dayFromUrl !== null && !isNaN(dayFromUrl)) ? dayFromUrl : ((existing.day !== undefined && existing.day !== null) ? existing.day : null);
+    const finalPattern = patternFromUrl || existing.pattern || null;
+    const finalSheet = sheetFromUrl || existing.sheet || null;
+
+    const currentContext = getSyncContext({
+      company: finalCompany,
+      challenge: finalChallenge,
+      day: finalDay,
+      pattern: finalPattern,
+      sheet: finalSheet
+    });
+
+    const contextData = (existing.contexts && existing.contexts[currentContext]) || {};
+    
     // Check if status is already Accepted and if it's already syncing/synced to prevent duplicate requests
-    if (existing.status === "Accepted" && (existing.syncState === "synced" || existing.syncState === "syncing")) {
+    if (existing.status === "Accepted" && (contextData.syncState === "synced" || contextData.syncState === "syncing")) {
       activeSyncLocks.delete(currentProblemKey);
-      console.log(`[Auto Sync] Lock released for ${currentProblemKey} (already processed/processing)`);
+      console.log(`[Auto Sync] Lock released for ${currentProblemKey} (already processed/processing in context ${currentContext})`);
       return;
     }
 
     console.log(`LeetCode Tracker [Auto Sync]: Accepted detected for ${currentProblemKey}`);
 
     // Set temporary lock/state to "syncing"
-    const data = {
-      status: "Accepted",
+    if (!existing.contexts) {
+      existing.contexts = {};
+    }
+    existing.contexts[currentContext] = {
       syncState: "syncing",
       timestamp: new Date().toISOString()
     };
 
+    const data = {
+      ...existing,
+      status: "Accepted",
+      company: finalCompany,
+      challenge: finalChallenge,
+      day: finalDay,
+      pattern: finalPattern,
+      sheet: finalSheet,
+      timestamp: new Date().toISOString()
+    };
+
     chrome.storage.local.set({ [currentProblemKey]: data }, () => {
-      console.log(`LeetCode Tracker [Auto Sync]: Status set to syncing for problem ${currentProblemKey}`);
+      console.log(`LeetCode Tracker [Auto Sync]: Status set to syncing for problem ${currentProblemKey} under context ${currentContext}`);
       
       // Extract active editor details and problem metadata
       getActiveCodeAndLanguage().then((codeInfo) => {
@@ -268,11 +344,7 @@ function saveAcceptedStatus() {
           details.extractedLanguage = codeInfo.language;
 
           // Trigger background auto sync
-          const companyFromUrl = new URLSearchParams(window.location.search).get("company");
-          console.log("CURRENT URL:", window.location.href);
-          console.log("COMPANY FROM URL:", companyFromUrl);
           chrome.runtime.sendMessage({
-            
             action: "triggerAutoSync",
             problemKey: currentProblemKey,
             payload: {
@@ -282,7 +354,11 @@ function saveAcceptedStatus() {
               status: "Accepted",
               language: details.extractedLanguage,
               code: details.extractedCode,
-              company: companyFromUrl
+              company: finalCompany,
+              challenge: finalChallenge,
+              day: finalDay,
+              pattern: finalPattern,
+              sheet: finalSheet
             }
           }, (response) => {
             // Release lock once background script returns response
@@ -301,11 +377,24 @@ function saveAcceptedStatus() {
           console.log(`[Auto Sync] Lock released for ${currentProblemKey}`);
 
           // Set to failed in storage
+          if (!existing.contexts) {
+            existing.contexts = {};
+          }
+          existing.contexts[currentContext] = {
+            syncState: "failed",
+            syncError: error.message,
+            timestamp: new Date().toISOString()
+          };
+
           chrome.storage.local.set({
             [currentProblemKey]: {
+              ...existing,
               status: "Accepted",
-              syncState: "failed",
-              syncError: error.message,
+              company: finalCompany,
+              challenge: finalChallenge,
+              day: finalDay,
+              pattern: finalPattern,
+              sheet: finalSheet,
               timestamp: new Date().toISOString()
             }
           });
@@ -338,7 +427,7 @@ function initializeSubmissionObserver() {
 
 // Start observing on injection
 initializeSubmissionObserver();
-extractCompanyFromUrl();
+extractMetadataFromUrl();
 
 // --- Code Extraction MVP Logic ---
 

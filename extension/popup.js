@@ -22,6 +22,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const syncButton = document.getElementById("sync-button");
   const syncFeedback = document.getElementById("sync-feedback");
   let activeQuestionData = null;
+  let currentContext = "general";
+
+  function getSyncContext(payload) {
+    if (!payload) return 'general';
+    if (payload.challenge === 'gv' && payload.day !== undefined && payload.day !== null) {
+      return `gv_day${payload.day}`;
+    }
+    if (payload.company) {
+      return `company_${payload.company}`;
+    }
+    if (payload.pattern) {
+      return `pattern_${payload.pattern}`;
+    }
+    if (payload.sheet) {
+      return `sheet_${payload.sheet}`;
+    }
+    return 'general';
+  }
 
   function updateSubmissionStatusDisplay(status) {
     if (!submissionStatus) return;
@@ -101,7 +119,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const newValue = changes[currentProblemKey].newValue;
       if (newValue && newValue.status === "Accepted") {
         updateSubmissionStatusDisplay("Accepted");
-        updateSyncButtonUI(newValue.syncState, newValue.syncError);
+        const contextData = (newValue.contexts && newValue.contexts[currentContext]) || {};
+        updateSyncButtonUI(contextData.syncState, contextData.syncError);
       }
     }
   });
@@ -129,11 +148,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Resolve storage key and check initial submission status
     currentProblemKey = getProblemKey(url);
+
+    let urlParams = null;
+    try {
+      urlParams = new URL(url).searchParams;
+    } catch (e) {}
+
+    const companyFromUrl = urlParams ? urlParams.get("company") : null;
+    const challengeFromUrl = urlParams ? urlParams.get("challenge") : null;
+    const dayFromUrlStr = urlParams ? urlParams.get("day") : null;
+    const dayFromUrl = dayFromUrlStr ? Number(dayFromUrlStr) : null;
+    const patternFromUrl = urlParams ? urlParams.get("pattern") : null;
+    const sheetFromUrl = urlParams ? urlParams.get("sheet") : null;
+
+    currentContext = getSyncContext({
+      company: companyFromUrl,
+      challenge: challengeFromUrl,
+      day: dayFromUrl,
+      pattern: patternFromUrl,
+      sheet: sheetFromUrl
+    });
+
     chrome.storage.local.get([currentProblemKey], (result) => {
       const data = result[currentProblemKey];
       if (data && data.status === "Accepted") {
         updateSubmissionStatusDisplay("Accepted");
-        updateSyncButtonUI(data.syncState, data.syncError);
+        const contextData = (data.contexts && data.contexts[currentContext]) || {};
+        updateSyncButtonUI(contextData.syncState, contextData.syncError);
       } else {
         updateSubmissionStatusDisplay("Not Accepted Yet");
       }
@@ -289,19 +330,59 @@ document.addEventListener("DOMContentLoaded", () => {
         code: activeQuestionData.extractedCode || ""
       };
 
+      let urlParams = null;
+      if (activeQuestionData && activeQuestionData.url) {
+        try {
+          urlParams = new URL(activeQuestionData.url).searchParams;
+        } catch (e) {}
+      }
+
+      const companyFromUrl = urlParams ? urlParams.get("company") : null;
+      const challengeFromUrl = urlParams ? urlParams.get("challenge") : null;
+      const dayFromUrlStr = urlParams ? urlParams.get("day") : null;
+      const dayFromUrl = dayFromUrlStr ? Number(dayFromUrlStr) : null;
+      const patternFromUrl = urlParams ? urlParams.get("pattern") : null;
+      const sheetFromUrl = urlParams ? urlParams.get("sheet") : null;
+
       // POST to backend API
       chrome.storage.local.get(["token", currentProblemKey], (result) => {
         const token = result.token;
         const problemData = result[currentProblemKey] || {};
-        const company = problemData.company || null;
+        
+        const company = companyFromUrl || problemData.company || null;
+        const challenge = challengeFromUrl || problemData.challenge || null;
+        
+        let day = null;
+        if (dayFromUrl !== null && !isNaN(dayFromUrl)) {
+          day = dayFromUrl;
+        } else if (problemData.day !== undefined && problemData.day !== null) {
+          day = Number(problemData.day);
+        }
+
+        const pattern = patternFromUrl || problemData.pattern || null;
+        const sheet = sheetFromUrl || problemData.sheet || null;
+
+        const currentContext = getSyncContext({
+          company: company,
+          challenge: challenge,
+          day: day,
+          pattern: pattern,
+          sheet: sheet
+        });
 
         if (!token) {
           chrome.storage.local.get([currentProblemKey], (storeResult) => {
             const data = storeResult[currentProblemKey] || { status: "Accepted" };
-            data.syncState = "pending_auth";
-            data.syncError = "Please login to CodePrep website first.";
+            if (!data.contexts) {
+              data.contexts = {};
+            }
+            data.contexts[currentContext] = {
+              syncState: "pending_auth",
+              syncError: "Please login to CodePrep website first.",
+              timestamp: new Date().toISOString()
+            };
             chrome.storage.local.set({ [currentProblemKey]: data }, () => {
-              updateSyncButtonUI("pending_auth", data.syncError);
+              updateSyncButtonUI("pending_auth", data.contexts[currentContext].syncError);
             });
           });
           return;
@@ -309,7 +390,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const syncPayload = {
           ...payload,
-          company:  payload.company
+          company: company,
+          challenge: challenge,
+          day: day,
+          pattern: pattern,
+          sheet: sheet,
+          syncContext: currentContext
         };
 
         fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
@@ -333,8 +419,13 @@ document.addEventListener("DOMContentLoaded", () => {
         .then(res => {
           chrome.storage.local.get([currentProblemKey], (storeResult) => {
             const data = storeResult[currentProblemKey] || { status: "Accepted" };
-            data.syncState = "synced";
-            delete data.syncError;
+            if (!data.contexts) {
+              data.contexts = {};
+            }
+            data.contexts[currentContext] = {
+              syncState: "synced",
+              timestamp: new Date().toISOString()
+            };
             chrome.storage.local.set({ [currentProblemKey]: data }, () => {
               updateSyncButtonUI("synced");
             });
@@ -352,8 +443,14 @@ document.addEventListener("DOMContentLoaded", () => {
               errorMsg = "Please login to CodePrep website first.";
             }
 
-            data.syncState = state;
-            data.syncError = errorMsg;
+            if (!data.contexts) {
+              data.contexts = {};
+            }
+            data.contexts[currentContext] = {
+              syncState: state,
+              syncError: errorMsg,
+              timestamp: new Date().toISOString()
+            };
             chrome.storage.local.set({ [currentProblemKey]: data }, () => {
               updateSyncButtonUI(state, errorMsg);
             });

@@ -37,20 +37,27 @@ function getLeetCodeUrl(q) {
   let url = q.leetcodeUrl || '';
   if (!url) return '';
   
+  let finalUrl = '';
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+    finalUrl = url;
+  } else {
+    // Otherwise, it might be a text like "Two Sum - LeetCode"
+    let slug = url.replace(/\s*-\s*leetcode\s*/i, '').trim();
+    slug = slug
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+      
+    if (!slug) return '';
+    finalUrl = `https://leetcode.com/problems/${slug}/`;
   }
-  
-  // Otherwise, it might be a text like "Two Sum - LeetCode"
-  let slug = url.replace(/\s*-\s*leetcode\s*/i, '').trim();
-  slug = slug
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-');
-    
-  if (!slug) return '';
-  return `https://leetcode.com/problems/${slug}/`;
+
+  if (q.dayNumber !== undefined && q.dayNumber !== null) {
+    const separator = finalUrl.includes('?') ? '&' : '?';
+    finalUrl = `${finalUrl}${separator}challenge=gv&day=${q.dayNumber}`;
+  }
+  return finalUrl;
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────

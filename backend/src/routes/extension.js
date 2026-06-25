@@ -14,7 +14,7 @@ const authMiddleware = require('../middleware/auth');
  */
 router.post('/sync', authMiddleware, async (req, res) => {
   try {
-    const { title, url, difficulty, status, language, code, company } = req.body;
+    const { title, url, difficulty, status, language, code, company, challenge, day, pattern, sheet, syncContext } = req.body;
     console.log("REQ BODY COMPANY:", req.body.company);
     console.log("DESTRUCTURED COMPANY:", company);
 
@@ -22,6 +22,8 @@ router.post('/sync', authMiddleware, async (req, res) => {
     console.log("========================================");
     console.log("COMPANY RECEIVED:", company);
     console.log("TITLE RECEIVED:", title);
+    console.log("CHALLENGE RECEIVED:", challenge);
+    console.log("DAY RECEIVED:", day);
     console.log("========================================");
 
     // 1. Input Validation
@@ -53,6 +55,17 @@ router.post('/sync', authMiddleware, async (req, res) => {
     }
     if (company !== undefined && company !== null && typeof company !== 'string') {
       return res.status(400).json({ success: false, error: 'Company context must be a string.' });
+    }
+    if (challenge !== undefined && challenge !== null && typeof challenge !== 'string') {
+      return res.status(400).json({ success: false, error: 'Challenge context must be a string.' });
+    }
+    if (day !== undefined && day !== null && isNaN(Number(day))) {
+      return res.status(400).json({ success: false, error: 'Day context must be a number.' });
+    }
+    if (challenge === "gv") {
+      if (day === undefined || day === null || isNaN(Number(day)) || Number(day) < 1) {
+        return res.status(400).json({ success: false, error: 'Day is required and must be a number greater than or equal to 1 for GV Challenge.' });
+      }
     }
 
     console.log('\n========================================');
@@ -122,7 +135,10 @@ router.post('/sync', authMiddleware, async (req, res) => {
       question._id,
       code,
       language,
-      company || null
+      company || null,
+      challenge || null,
+      day !== undefined && day !== null ? Number(day) : null,
+      syncContext || null
     );
 
     // 6. Save to MongoDB (ExtensionSubmission history)

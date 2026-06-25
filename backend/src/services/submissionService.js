@@ -13,7 +13,7 @@ const githubRepositoryService = require('./githubRepositoryService');
  * @param {string|null} company - Optional company name from the frontend
  * @returns {Promise<object>}
  */
-const saveSubmissionAndPush = async (userId, questionId, code, language, company = null) => {
+const saveSubmissionAndPush = async (userId, questionId, code, language, company = null, challenge = null, day = null, syncContext = null) => {
   // 1. Find question by questionId
   const question = await Question.findById(questionId);
   if (!question) {
@@ -86,74 +86,88 @@ console.log("Has Token:", !!user.githubAccessToken);
     const token = user.githubAccessToken;
     const username = user.githubUsername;
 
-    // Determine company folder name: prefer submission company, fallback to CompanyQuestion lookup
-    let folderCompany;
-    if (company) {
-      folderCompany = company.charAt(0).toUpperCase() + company.slice(1).toLowerCase();
-    } else {
-      const companyQuestion = await CompanyQuestion.findOne({ questionId });
-      const rawCompany = companyQuestion ? companyQuestion.company : 'general';
-      folderCompany = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
-    }
     const questionTitle = question.title;
 
     try {
       // Verify repository exists
       const repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
       if (repoExists) {
-        // Verify company folder exists, auto-create if missing
-        const gitkeepPath = `${folderCompany}/.gitkeep`;
-        let folderExists = false;
-        try {
-          folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
-        } catch (err) {
-          console.error(`Error checking folder existence during auto-sync for ${folderCompany}:`, err.message);
-        }
+        let filePath;
+        let isReadyToPush = false;
+        
+        const extensionMap = {
+          'cpp': 'cpp',
+          'c++': 'cpp',
+          'java': 'java',
+          'python': 'py',
+          'python3': 'py',
+          'javascript': 'js',
+          'js': 'js',
+          'typescript': 'ts',
+          'ts': 'ts',
+          'c': 'c',
+          'csharp': 'cs',
+          'c#': 'cs',
+          'go': 'go',
+          'rust': 'rs',
+          'ruby': 'rb',
+          'swift': 'swift',
+          'kotlin': 'kt',
+          'scala': 'scala',
+          'php': 'php',
+          'html': 'html',
+          'css': 'css',
+          'sql': 'sql'
+        };
+        const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
 
-        if (!folderExists) {
-          console.log(`Company folder for "${folderCompany}" does not exist. Creating automatically...`);
+        if (challenge === 'gv') {
+          // Ignore company folder logic and give challenge routing higher priority than company routing
+          const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+          filePath = `GVishwanathanChallenge/DAY${Number(day)}/${sanitizedTitle}.${ext}`;
+          isReadyToPush = true;
+        } else {
+          // Determine company folder name: prefer submission company, fallback to CompanyQuestion lookup
+          let folderCompany;
+          if (company) {
+            folderCompany = company.charAt(0).toUpperCase() + company.slice(1).toLowerCase();
+          } else {
+            const companyQuestion = await CompanyQuestion.findOne({ questionId });
+            const rawCompany = companyQuestion ? companyQuestion.company : 'general';
+            folderCompany = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+          }
+
+          // Verify company folder exists, auto-create if missing
+          const gitkeepPath = `${folderCompany}/.gitkeep`;
+          let folderExists = false;
           try {
-            const base64Content = Buffer.from('').toString('base64');
-            const commitMessage = `Initialize folder structure for ${folderCompany} (Auto-created)`;
-            await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
-            console.log(`Successfully created folder for "${folderCompany}".`);
-            folderExists = true;
-          } catch (createErr) {
-            console.error(`Failed to automatically create company folder for ${folderCompany}:`, createErr.message);
+            folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+          } catch (err) {
+            console.error(`Error checking folder existence during auto-sync for ${folderCompany}:`, err.message);
+          }
+
+          if (!folderExists) {
+            console.log(`Company folder for "${folderCompany}" does not exist. Creating automatically...`);
+            try {
+              const base64Content = Buffer.from('').toString('base64');
+              const commitMessage = `Initialize folder structure for ${folderCompany} (Auto-created)`;
+              await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
+              console.log(`Successfully created folder for "${folderCompany}".`);
+              folderExists = true;
+            } catch (createErr) {
+              console.error(`Failed to automatically create company folder for ${folderCompany}:`, createErr.message);
+            }
+          }
+
+          if (folderExists) {
+            const cleanTitle = questionTitle.replace(/[^a-zA-Z0-9]/g, '');
+            const filename = `${cleanTitle}.${ext}`;
+            filePath = `${folderCompany}/${filename}`;
+            isReadyToPush = true;
           }
         }
 
-        if (folderExists) {
-          // Generate filename
-          const extensionMap = {
-            'cpp': 'cpp',
-            'c++': 'cpp',
-            'java': 'java',
-            'python': 'py',
-            'python3': 'py',
-            'javascript': 'js',
-            'js': 'js',
-            'typescript': 'ts',
-            'ts': 'ts',
-            'c': 'c',
-            'csharp': 'cs',
-            'c#': 'cs',
-            'go': 'go',
-            'rust': 'rs',
-            'ruby': 'rb',
-            'swift': 'swift',
-            'kotlin': 'kt',
-            'scala': 'scala',
-            'php': 'php',
-            'html': 'html',
-            'css': 'css',
-            'sql': 'sql'
-          };
-          const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
-          const cleanTitle = questionTitle.replace(/[^a-zA-Z0-9]/g, '');
-          const filename = `${cleanTitle}.${ext}`;
-          const filePath = `${folderCompany}/${filename}`;
-
+        if (isReadyToPush) {
           // Get existing file SHA if any
           let sha = null;
           try {
