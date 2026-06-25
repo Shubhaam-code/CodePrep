@@ -45,13 +45,21 @@ const saveSubmissionAndPush = async (userId, questionId, code, language, company
            d1.getDate() === d2.getDate();
   };
 
+  const currentContext = syncContext || "general";
+
   const alreadySolved = user.solvedQuestions.some(
-    (q) => q.questionId.toString() === questionId.toString()
+    (q) =>
+      q.questionId.toString() === questionId.toString() &&
+      (q.syncContext || "general") === currentContext
   );
 
   if (!alreadySolved) {
     const now = new Date();
-    user.solvedQuestions.push({ questionId, solvedAt: now });
+    user.solvedQuestions.push({
+    questionId,
+    syncContext: currentContext,
+    solvedAt: now
+  });
     
     // Streak logic matching user.js
     const lastSolved = user.streak.lastSolvedDate;

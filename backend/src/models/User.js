@@ -25,19 +25,25 @@ const UserSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
-    solvedQuestions: [
-      {
-        questionId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: 'Question',
-          required: true,
-        },
-        solvedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
+solvedQuestions: [
+  {
+    questionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Question",
+      required: true,
+    },
+
+    syncContext: {
+      type: String,
+      default: "general",
+    },
+
+    solvedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+],
     bookmarks: [
       {
         type: mongoose.Schema.Types.ObjectId,

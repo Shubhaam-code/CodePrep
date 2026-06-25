@@ -19,10 +19,7 @@ function getSyncContext({ company, challenge, day, pattern, sheet } = {}) {
   return 'general';
 }
 
-/** localStorage key for a solved mark in a given context */
-function solvedKey(questionId, syncContext) {
-  return `codeprep_solved__${questionId}__${syncContext}`;
-}
+
 
 /**
  * Toast component to render success or error alerts dynamically.
@@ -72,13 +69,14 @@ export default function QuestionLinks({ question, company, challenge, day, patte
 
   // Compute the current sync context from the provided props
   const syncContext = getSyncContext({ company, challenge, day, pattern, sheet });
+  console.log("USER:", user);
+console.log(
+  "SOLVED QUESTIONS:",
+  JSON.stringify(user?.solvedQuestions, null, 2)
+);
+console.log("CURRENT SYNC CONTEXT:", syncContext);
 
-  // Per-context solved state — checked from localStorage so it's independent per context
-  const contextSolvedKey = question ? solvedKey(question._id, syncContext) : null;
-  const [isSolvedInContext, setIsSolvedInContext] = useState(() => {
-    if (!contextSolvedKey) return false;
-    return localStorage.getItem(contextSolvedKey) === 'true';
-  });
+
 
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -87,13 +85,18 @@ export default function QuestionLinks({ question, company, challenge, day, patte
 
   const leetcodeLink = question.leetcodeUrl || '';
 
-  // Global solved state — kept for visual strikethrough / row highlights used by callers
-  const isGloballySolved = user?.solvedQuestions?.some(
-    (sq) => sq.questionId === question._id
-  );
+  const isSolved =
+  user?.solvedQuestions?.some((q) => {
+    const solvedQuestionId =
+      typeof q.questionId === "object"
+        ? q.questionId._id
+        : q.questionId;
 
-  // Button "solved" = solved specifically in this context
-  const isSolved = isSolvedInContext;
+    return (
+      solvedQuestionId?.toString() === question._id.toString() &&
+      (q.syncContext || "general") === syncContext
+    );
+  }) || false;
 
   const handleOpenProblem = () => {
     if (!leetcodeLink) return;
@@ -134,11 +137,7 @@ export default function QuestionLinks({ question, company, challenge, day, patte
       });
 
       if (response.data.success) {
-        // Persist the per-context solved flag to localStorage
-        if (contextSolvedKey) {
-          localStorage.setItem(contextSolvedKey, 'true');
-        }
-        setIsSolvedInContext(true);
+  
 
         setToast({ message: 'Question synced to Github', type: 'success' });
 
