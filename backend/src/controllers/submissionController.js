@@ -18,14 +18,14 @@ exports.solveQuestion = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Bad Request: language is required.' });
     }
 
-    // Sanitize optional company field
-    const sanitizedCompany = (company && typeof company === 'string')
-      ? company.trim().toLowerCase()
-      : null;
-
-    const sanitizedChallenge = (challenge && typeof challenge === 'string') ? challenge.trim() : null;
-    const sanitizedDay       = (day !== undefined && day !== null && !isNaN(Number(day))) ? Number(day) : null;
-    const sanitizedSyncContext = (syncContext && typeof syncContext === 'string') ? syncContext.trim() : null;
+    // Sanitize optional context fields so submissions are routed to the
+    // correct dedicated GitHub repository.
+    const sanitizedCompany      = (company   && typeof company   === 'string') ? company.trim().toLowerCase() : null;
+    const sanitizedChallenge    = (challenge && typeof challenge === 'string') ? challenge.trim()             : null;
+    const sanitizedDay          = (day !== undefined && day !== null && !isNaN(Number(day))) ? Number(day)    : null;
+    const sanitizedPattern      = (pattern   && typeof pattern   === 'string') ? pattern.trim()               : null;
+    const sanitizedSheet        = (sheet     && typeof sheet     === 'string') ? sheet.trim()                 : null;
+    const sanitizedSyncContext  = (syncContext && typeof syncContext === 'string') ? syncContext.trim()        : null;
 
     const userId = req.user.id;
 
@@ -37,7 +37,9 @@ exports.solveQuestion = async (req, res) => {
       sanitizedCompany,
       sanitizedChallenge,
       sanitizedDay,
-      sanitizedSyncContext
+      sanitizedSyncContext,
+      sanitizedPattern,
+      sanitizedSheet
     );
 
     return res.status(200).json({

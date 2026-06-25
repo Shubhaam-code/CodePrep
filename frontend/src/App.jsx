@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { useAppSelector } from './store/store';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAppSelector, useAppDispatch } from './store/store';
+import { setUser } from './store/authSlice';
+import apiClient from './api/axios';
 
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
@@ -57,6 +60,61 @@ const OnboardingRoute = () => {
 };
 
 export default function App() {
+  const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
+  const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Extension-sync bridge (registered once at the application root)
+  //
+  // The CodePrep browser extension's content script (contentCodePrep.js)
+  // watches chrome.storage.local and broadcasts on
+  // BroadcastChannel('codeprep-sync') the moment a problem transitions
+  // to syncState === 'synced' (i.e. /api/extension/sync succeeded).
+  //
+  // Mounted here — not in any page — so the listener is registered
+  // exactly once for the entire app lifecycle.
+  //
+  // Two refresh paths fan out from this single listener:
+  //   1. setUser(...) → pages that derive state from Redux
+  //      (Dashboard, CompanyPage, Roadmap, etc.) re-render.
+  //   2. invalidateQueries(...) → page-local query caches refetch:
+  //        • ['gv-progress'] is read by GVChallenge (which now reads
+  //          ONLY from /api/gvchallenge/progress — never from Redux).
+  //        • ['dashboard'] powers the Dashboard summary stats.
+  //        • ['githubStats'] powers the GitHub Sync card.
+  // ─────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return undefined;
+    if (!isAuthenticated) return undefined;
+
+    const channel = new BroadcastChannel('codeprep-sync');
+    const handleSyncCompleted = async (event) => {
+      if (!event || event.data?.type !== 'codeprep:sync-completed') return;
+      try {
+        const profileRes = await apiClient.get('/api/auth/me');
+        if (profileRes?.data) {
+          dispatch(setUser(profileRes.data));
+        }
+        // Page-local query caches also need to refresh so derived
+        // stats (GV progress, GitHub stats, dashboard summary) update.
+        // Note: GVChallenge reads exclusively from ['gv-progress'],
+        // not from Redux — this invalidation is what advances its day.
+        queryClient.invalidateQueries({ queryKey: ['gv-progress'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['githubStats'] });
+      } catch (err) {
+        console.error('[App] Failed to refresh user after extension sync:', err);
+      }
+    };
+
+    channel.addEventListener('message', handleSyncCompleted);
+    return () => {
+      channel.removeEventListener('message', handleSyncCompleted);
+      channel.close();
+    };
+  }, [dispatch, isAuthenticated, queryClient]);
+
   return (
     <div className="min-h-screen bg-[#0B0B0F] text-white font-sans">
       <Routes>

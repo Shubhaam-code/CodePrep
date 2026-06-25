@@ -1,14 +1,24 @@
 const axios = require('axios');
 
 /**
- * Check if the repository "company-preparation" exists for the user
+ * Build the GitHub URL for the given repo, taking care to URL-encode each
+ * path segment (e.g. dots / dashes are fine, but spaces must be encoded).
+ */
+const repoUrl = (username, repo, ...rest) => {
+  const segments = [username, repo, ...rest].filter(Boolean).map((s) => encodeURIComponent(s));
+  return `https://api.github.com/repos/${segments.join('/')}`;
+};
+
+/**
+ * Check if a repository exists for the user.
  * @param {string} username - User's GitHub username
  * @param {string} token - User's GitHub access token
+ * @param {string} repo - Repository name (e.g. "company-preparation")
  * @returns {Promise<boolean>}
  */
-const checkRepositoryExists = async (username, token) => {
+const checkRepositoryExists = async (username, token, repo = 'company-preparation') => {
   try {
-    await axios.get(`https://api.github.com/repos/${username}/company-preparation`, {
+    await axios.get(repoUrl(username, repo), {
       headers: {
         Authorization: `Bearer ${token}`,
         'User-Agent': 'CodePrep-AI',
@@ -25,16 +35,17 @@ const checkRepositoryExists = async (username, token) => {
 };
 
 /**
- * Create a new repository "company-preparation"
+ * Create a new repository with the given name.
  * @param {string} token - User's GitHub access token
+ * @param {string} repo - Repository name to create
  * @returns {Promise<object>} - Repository details
  */
-const createRepository = async (token) => {
+const createRepository = async (token, repo = 'company-preparation') => {
   const response = await axios.post(
     'https://api.github.com/user/repos',
     {
-      name: 'company-preparation',
-      description: 'CodePrep automatic preparation repository',
+      name: repo,
+      description: `CodePrep ${repo} repository (auto-created)`,
       private: false,
     },
     {
@@ -49,15 +60,16 @@ const createRepository = async (token) => {
 };
 
 /**
- * Check if a file exists in the repository using the Contents API
+ * Check if a file exists in the repository using the Contents API.
  * @param {string} username - GitHub username
  * @param {string} token - GitHub access token
  * @param {string} path - File path in the repository (e.g. "Google/.gitkeep")
+ * @param {string} [repo] - Repository name (defaults to "company-preparation")
  * @returns {Promise<boolean>}
  */
-const checkFileExists = async (username, token, path) => {
+const checkFileExists = async (username, token, path, repo = 'company-preparation') => {
   try {
-    await axios.get(`https://api.github.com/repos/${username}/company-preparation/contents/${encodeURIComponent(path)}`, {
+    await axios.get(repoUrl(username, repo, 'contents', path), {
       headers: {
         Authorization: `Bearer ${token}`,
         'User-Agent': 'CodePrep-AI',
@@ -74,17 +86,18 @@ const checkFileExists = async (username, token, path) => {
 };
 
 /**
- * Create a file in the repository using the Contents API
+ * Create a file in the repository using the Contents API.
  * @param {string} username - GitHub username
  * @param {string} token - GitHub access token
  * @param {string} path - File path in the repository (e.g. "Google/.gitkeep")
  * @param {string} message - Commit message
  * @param {string} content - Base64 encoded file content
+ * @param {string} [repo] - Repository name (defaults to "company-preparation")
  * @returns {Promise<object>}
  */
-const createFile = async (username, token, path, message, content) => {
+const createFile = async (username, token, path, message, content, repo = 'company-preparation') => {
   const response = await axios.put(
-    `https://api.github.com/repos/${username}/company-preparation/contents/${encodeURIComponent(path)}`,
+    repoUrl(username, repo, 'contents', path),
     {
       message,
       content,
@@ -101,15 +114,16 @@ const createFile = async (username, token, path, message, content) => {
 };
 
 /**
- * Get details of a file in the repository (e.g. to retrieve the sha for updating)
+ * Get details of a file in the repository (e.g. to retrieve the sha for updating).
  * @param {string} username - GitHub username
  * @param {string} token - GitHub access token
  * @param {string} path - File path in the repository
+ * @param {string} [repo] - Repository name (defaults to "company-preparation")
  * @returns {Promise<object|null>}
  */
-const getFileDetails = async (username, token, path) => {
+const getFileDetails = async (username, token, path, repo = 'company-preparation') => {
   try {
-    const response = await axios.get(`https://api.github.com/repos/${username}/company-preparation/contents/${encodeURIComponent(path)}`, {
+    const response = await axios.get(repoUrl(username, repo, 'contents', path), {
       headers: {
         Authorization: `Bearer ${token}`,
         'User-Agent': 'CodePrep-AI',
@@ -126,16 +140,25 @@ const getFileDetails = async (username, token, path) => {
 };
 
 /**
- * Create or update a file in the repository using the Contents API
+ * Create or update a file in the repository using the Contents API.
  * @param {string} username - GitHub username
  * @param {string} token - GitHub access token
  * @param {string} path - File path in the repository (e.g. "Google/TwoSum.cpp")
  * @param {string} message - Commit message
  * @param {string} content - Base64 encoded file content
- * @param {string} [sha] - Optional SHA of the existing file (required for updates)
+ * @param {string|null} [sha] - Optional SHA of the existing file (required for updates)
+ * @param {string} [repo] - Repository name (defaults to "company-preparation")
  * @returns {Promise<object>}
  */
-const createOrUpdateFile = async (username, token, path, message, content, sha = null) => {
+const createOrUpdateFile = async (
+  username,
+  token,
+  path,
+  message,
+  content,
+  sha = null,
+  repo = 'company-preparation'
+) => {
   const body = {
     message,
     content,
@@ -145,7 +168,7 @@ const createOrUpdateFile = async (username, token, path, message, content, sha =
   }
 
   const response = await axios.put(
-    `https://api.github.com/repos/${username}/company-preparation/contents/${encodeURIComponent(path)}`,
+    repoUrl(username, repo, 'contents', path),
     body,
     {
       headers: {

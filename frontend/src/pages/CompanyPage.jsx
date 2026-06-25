@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
-import { updateSolvedQuestions, updateBookmarks } from '../store/authSlice';
+import { updateBookmarks, setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
-import QuestionLinks from '../components/QuestionLinks';
+import QuestionLinks, { getSyncContext, isQuestionSolvedInContext } from '../components/QuestionLinks';
 
 /**
  * Capitalizes company name cleanly (e.g. goldman-sachs -> Goldman Sachs).
@@ -25,6 +25,26 @@ function CompanyPage() {
 
   // Read auth state from Redux
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
+
+  // Refresh the cached user from the backend on mount so solved state
+  // recorded by the LeetCode Extension (in another tab / session) becomes
+  // visible without requiring the user to manually click the checkbox.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get('/api/auth/me')
+      .then((res) => {
+        if (!cancelled && res?.data) {
+          dispatch(setUser(res.data));
+        }
+      })
+      .catch(() => {
+        // Silent fallback to cached Redux user.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch]);
 
   // Extract filter parameters from URL
   const timeframe = searchParams.get('timeframe') || 'alltime';
@@ -52,11 +72,10 @@ function CompanyPage() {
 
   // Filter lists & helper checks
   const totalQuestionsCount = companyQuestions ? companyQuestions.length : 0;
+  const companySyncContext = getSyncContext({ company: name });
   const solvedQuestionsCount = companyQuestions
     ? companyQuestions.filter((cq) =>
-        user?.solvedQuestions?.some(
-          (sq) => sq.questionId === cq.question?._id
-        )
+        isQuestionSolvedInContext(user, cq.question?._id, companySyncContext)
       ).length
     : 0;
 
@@ -77,24 +96,6 @@ function CompanyPage() {
       prev.set('difficulty', val);
       return prev;
     });
-  };
-
-  // Toggle Solved Status Action
-  const handleSolveToggle = async (questionId, isSolved) => {
-    if (!isAuthenticated) return;
-    try {
-      let updatedList;
-      if (isSolved) {
-        const response = await apiClient.delete(`/api/user/solve/${questionId}`);
-        updatedList = response.data;
-      } else {
-        const response = await apiClient.post(`/api/user/solve/${questionId}`);
-        updatedList = response.data;
-      }
-      dispatch(updateSolvedQuestions(updatedList));
-    } catch (err) {
-      console.error('Error updating solved status:', err);
-    }
   };
 
   // Toggle Bookmark Action
@@ -236,8 +237,10 @@ function CompanyPage() {
                   const q = cq.question;
                   if (!q) return null;
 
-                  const isSolved = user?.solvedQuestions?.some(
-                    (sq) => sq.questionId === q._id
+                  const isSolved = isQuestionSolvedInContext(
+                    user,
+                    q._id,
+                    companySyncContext
                   );
 
                   const isBookmarked = user?.bookmarks?.some((b) => {
@@ -304,15 +307,20 @@ function CompanyPage() {
                         </div>
                       </td>
 
-                      {/* Checkbox Solved Toggle */}
+                      {/* Read-only Solved Indicator */}
                       {isAuthenticated && (
                         <td className="px-6 py-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={!!isSolved}
-                            onChange={() => handleSolveToggle(q._id, !!isSolved)}
-                            className="cursor-pointer h-4 w-4 rounded border-slate-800 bg-slate-950 text-[#FF7A00] focus:ring-[#FF7A00] accent-[#FF7A00]"
-                          />
+                          <span
+                            className={`inline-flex items-center justify-center h-5 w-5 rounded-md text-xs font-bold ${
+                              isSolved
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-slate-900/50 text-slate-600 border border-slate-800'
+                            }`}
+                            title={isSolved ? 'Solved' : 'Not solved'}
+                            aria-label={isSolved ? 'Solved' : 'Not solved'}
+                          >
+                            {isSolved ? '✓' : ''}
+                          </span>
                         </td>
                       )}
 

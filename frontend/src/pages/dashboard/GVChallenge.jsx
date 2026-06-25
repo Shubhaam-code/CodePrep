@@ -5,8 +5,9 @@ import {
   FaSpinner as Loader2, FaCopy as Copy, FaCheck as Check , FaFire as Flame
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { useAppSelector } from '../../store/store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAppSelector, useAppDispatch } from '../../store/store';
+import { setUser } from '../../store/authSlice';
 import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';
 
@@ -87,7 +88,9 @@ function Toast({ message, onDone }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GVChallenge() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((s) => s.auth);
+  const queryClient = useQueryClient();
 
   const [screen, setScreen] = useState('home'); // 'home' | 'preview' | 'success'
   const [showSolutionForm, setShowSolutionForm] = useState(false);
@@ -136,8 +139,19 @@ export default function GVChallenge() {
     }
   }, [currentQuestion]);
 
-  // Completed day numbers set
-  const completedDayNums = new Set((prog.completedDays || []).map((c) => c.dayNumber));
+  // ── GV Challenge is fully isolated from user.solvedQuestions ──
+  // The solved-day set is sourced from /api/gvchallenge/progress
+  // (which reads from the GVChallenge collection for THIS user).
+  // Solving a Company/Pattern/Sheet/Roadmap question must NEVER
+  // change anything here, and a GV solve must NEVER affect the
+  // global solved count surfaced on the dashboard — those surfaces
+  // continue to read from user.solvedQuestions independently.
+  const completedDayNums = new Set(
+    (prog.completedDays || []).map((c) => c.dayNumber)
+  );
+  const currentDaySolved = currentQuestion
+    ? completedDayNums.has(currentQuestion.dayNumber)
+    : false;
 
   // ── Generate post ──────────────────────────────────────────────────────────
   const handleGeneratePost = async () => {
@@ -218,6 +232,45 @@ export default function GVChallenge() {
       setScreen('success');
     } catch {
       setToast('❌ Failed to mark complete.');
+    }
+  };
+
+  // ── Already Solved Before ─────────────────────────────────────────────────
+  // For users who solved the current GV question BEFORE joining CodePrep.
+  // The backend writes a row to the GVChallenge collection (the single
+  // source of truth for GV progression). We then invalidate
+  // ['gv-progress'] so useQuery refetches → completedDayNums grows →
+  // currentDay advances → Day N+1 becomes Today's Question.
+  // No GitHub push, no Submission, no Extension sync, no README update.
+  const [alreadySolvedBusy, setAlreadySolvedBusy] = useState(false);
+  const handleAlreadySolved = async () => {
+    if (!currentQuestion) return;
+    if (alreadySolvedBusy) return;
+    setAlreadySolvedBusy(true);
+    try {
+      await apiClient.post('/api/gvchallenge/mark-already-solved', {
+        dayNumber: currentDay,
+        questionTitle: currentQuestion.title,
+      });
+      // The setUser dispatch is NOT used by this page anymore (GV
+      // Challenge now reads exclusively from /api/gvchallenge/progress).
+      // We still call it so other surfaces that watch Redux see the
+      // updated user, but the actual page advancement below comes from
+      // invalidating ['gv-progress'].
+      try {
+        const profileRes = await apiClient.get('/api/auth/me');
+        if (profileRes?.data) dispatch(setUser(profileRes.data));
+      } catch (profileErr) {
+        console.warn('[GVChallenge] Could not refresh user after mark-already-solved:', profileErr);
+      }
+      queryClient.invalidateQueries({ queryKey: ['gv-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setToast('✓ Day marked complete. Next day unlocked.');
+    } catch (err) {
+      console.error('[GVChallenge] mark-already-solved failed:', err);
+      setToast('❌ Could not mark as already solved. Try again.');
+    } finally {
+      setAlreadySolvedBusy(false);
     }
   };
 
@@ -401,7 +454,7 @@ export default function GVChallenge() {
               }}
             >
               <p className="text-2xl font-bold" style={{ color: 'var(--orange)' }}>
-                🔥 {prog.currentStreak + 1} Day Streak!
+                🔥 {Math.max(prog.currentStreak, 1)} Day Streak!
               </p>
               <p className="text-sm mt-1" style={{ color: 'var(--text-2)' }}>
                 Keep the momentum going!
@@ -572,9 +625,13 @@ export default function GVChallenge() {
               <div className="flex items-center justify-between mb-3">
                 <span
                   className="text-xs font-bold px-3 py-1 rounded-full"
-                  style={{ background: 'var(--orange-dim)', color: 'var(--orange)' }}
+                  style={
+                    currentDaySolved
+                      ? { background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.25)' }
+                      : { background: 'var(--orange-dim)', color: 'var(--orange)' }
+                  }
                 >
-                  📅 Today
+                  {currentDaySolved ? '✓ Solved' : '📅 Today'}
                 </span>
                 <span className="text-xl font-bold" style={{ color: 'var(--orange)', fontFamily: 'JetBrains Mono, monospace' }}>
                   Day {currentDay}
@@ -607,113 +664,153 @@ export default function GVChallenge() {
 
               <div className="border-b mb-4" style={{ borderColor: 'var(--border)' }} />
 
-              {/* Instructions */}
-              <div className="text-sm space-y-1 mb-4" style={{ color: 'var(--text-2)' }}>
-                <p>1. Open question on LeetCode below</p>
-                <p>2. Solve &amp; Submit → LeetHub auto-pushes to GitHub ✅</p>
-                <p>3. Come back, paste solution, generate LinkedIn post</p>
-              </div>
-
-              {/* Open LeetCode button */}
-              <button
-                onClick={() => {
-                  const url = getLeetCodeUrl(currentQuestion);
-                  if (url) {
-                    window.open(url, '_blank');
-                    setShowSolutionForm(true);
-                  }
-                }}
-                disabled={!getLeetCodeUrl(currentQuestion)}
-                className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mb-4 ${
-                  getLeetCodeUrl(currentQuestion)
-                    ? 'cursor-pointer text-black hover:opacity-90'
-                    : 'cursor-not-allowed opacity-50 text-gray-400'
-                }`}
-                style={{
-                  background: getLeetCodeUrl(currentQuestion)
-                    ? 'linear-gradient(135deg, var(--orange), var(--secondary))'
-                    : 'var(--bg-hover)',
-                  border: getLeetCodeUrl(currentQuestion) ? 'none' : '1px solid var(--border)',
-                }}
-              >
-                {getLeetCodeUrl(currentQuestion) ? (
-                  <>
-                    <ExternalLink size={15} /> Open on LeetCode →
-                  </>
-                ) : (
-                  'Question link unavailable'
-                )}
-              </button>
-
-              {/* Solution form */}
-              <AnimatePresence>
-                {showSolutionForm && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="rounded-xl p-5 mt-2"
-                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}
-                  >
-                    <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-2)' }}>
-                      Paste your accepted solution:
+              {currentDaySolved ? (
+                /* ── Already solved: show ✓ Solved card; no manual action needed. */
+                <div
+                  className="rounded-xl p-5 flex items-center gap-3"
+                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
+                >
+                  <CheckCircle size={22} className="text-green-400 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+                      ✓ Solved
                     </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                      Day {currentDay} is done. Next: Day {currentDay + 1} unlocked.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Instructions */}
+                  <div className="text-sm space-y-1 mb-4" style={{ color: 'var(--text-2)' }}>
+                    <p>1. Open question on LeetCode below</p>
+                    <p>2. Solve &amp; Submit → LeetHub auto-pushes to GitHub ✅</p>
+                    <p>3. Come back, paste solution, generate LinkedIn post</p>
+                  </div>
 
-                    {/* Language pills */}
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {LANGUAGES.map((lang) => (
-                        <button
-                          key={lang}
-                          onClick={() => setLanguage(lang)}
-                          className="cursor-pointer px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                  {/* Open LeetCode button */}
+                  <button
+                    onClick={() => {
+                      const url = getLeetCodeUrl(currentQuestion);
+                      if (url) {
+                        window.open(url, '_blank');
+                        setShowSolutionForm(true);
+                      }
+                    }}
+                    disabled={!getLeetCodeUrl(currentQuestion)}
+                    className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mb-4 ${
+                      getLeetCodeUrl(currentQuestion)
+                        ? 'cursor-pointer text-black hover:opacity-90'
+                        : 'cursor-not-allowed opacity-50 text-gray-400'
+                    }`}
+                    style={{
+                      background: getLeetCodeUrl(currentQuestion)
+                        ? 'linear-gradient(135deg, var(--orange), var(--secondary))'
+                        : 'var(--bg-hover)',
+                      border: getLeetCodeUrl(currentQuestion) ? 'none' : '1px solid var(--border)',
+                    }}
+                  >
+                    {getLeetCodeUrl(currentQuestion) ? (
+                      <>
+                        <ExternalLink size={15} /> Open on LeetCode →
+                      </>
+                    ) : (
+                      'Question link unavailable'
+                    )}
+                  </button>
+
+                  {/* Already Solved Before (current day only) */}
+                  {/* Secondary action for users who solved this question
+                      before joining CodePrep. It marks the day complete
+                      and unlocks the next day WITHOUT pushing to GitHub,
+                      creating a Submission, or triggering the Extension
+                      sync. It only updates GV progress. */}
+                  <button
+                    onClick={handleAlreadySolved}
+                    disabled={alreadySolvedBusy}
+                    className="cursor-pointer w-full py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'var(--bg-hover)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-2)',
+                    }}
+                    title="Mark this day complete if you solved the question before joining CodePrep. No GitHub push."
+                  >
+                    {alreadySolvedBusy ? '⏳ Marking…' : '✓ Already Solved Before'}
+                  </button>
+
+                  {/* Solution form */}
+                  <AnimatePresence>
+                    {showSolutionForm && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="rounded-xl p-5 mt-2"
+                        style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}
+                      >
+                        <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-2)' }}>
+                          Paste your accepted solution:
+                        </p>
+
+                        {/* Language pills */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {LANGUAGES.map((lang) => (
+                            <button
+                              key={lang}
+                              onClick={() => setLanguage(lang)}
+                              className="cursor-pointer px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                              style={{
+                                background: language === lang ? 'var(--orange)' : 'var(--bg-card)',
+                                color: language === lang ? '#fff' : 'var(--text-3)',
+                                border: '1px solid var(--border)',
+                              }}
+                            >
+                              {lang}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                          value={solution}
+                          onChange={(e) => setSolution(e.target.value)}
+                          rows={8}
+                          placeholder="# Paste your accepted solution here..."
+                          className="w-full rounded-xl p-3 text-sm resize-y outline-none transition-all"
                           style={{
-                            background: language === lang ? 'var(--orange)' : 'var(--bg-card)',
-                            color: language === lang ? '#fff' : 'var(--text-3)',
+                            background: 'var(--bg-primary)',
                             border: '1px solid var(--border)',
+                            color: 'var(--text-1)',
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: '13px',
                           }}
+                          onFocus={(e) => { e.target.style.borderColor = 'var(--orange-dim)'; }}
+                          onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                        />
+
+                        {/* Generate button */}
+                        <button
+                          onClick={handleGeneratePost}
+                          disabled={!solution.trim() || isGenerating}
+                          className="cursor-pointer w-full mt-3 py-3 rounded-xl font-semibold text-black text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
                         >
-                          {lang}
+                          {isGenerating ? (
+                            <>
+                              <Loader2 size={15} className="animate-spin" />
+                              🤖 AI is writing your post...
+                            </>
+                          ) : (
+                            'Generate LinkedIn Post →'
+                          )}
                         </button>
-                      ))}
-                    </div>
-
-                    {/* Textarea */}
-                    <textarea
-                      value={solution}
-                      onChange={(e) => setSolution(e.target.value)}
-                      rows={8}
-                      placeholder="# Paste your accepted solution here..."
-                      className="w-full rounded-xl p-3 text-sm resize-y outline-none transition-all"
-                      style={{
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border)',
-                        color: 'var(--text-1)',
-                        fontFamily: 'JetBrains Mono, monospace',
-                        fontSize: '13px',
-                      }}
-                      onFocus={(e) => { e.target.style.borderColor = 'var(--orange-dim)'; }}
-                      onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                    />
-
-                    {/* Generate button */}
-                    <button
-                      onClick={handleGeneratePost}
-                      disabled={!solution.trim() || isGenerating}
-                      className="cursor-pointer w-full mt-3 py-3 rounded-xl font-semibold text-black text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 size={15} className="animate-spin" />
-                          🤖 AI is writing your post...
-                        </>
-                      ) : (
-                        'Generate LinkedIn Post →'
-                      )}
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </>
+              )}
             </>
           )}
         </motion.div>
@@ -751,6 +848,11 @@ export default function GVChallenge() {
               <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
                 {questions.map((q) => {
                   const isToday = q.dayNumber === currentDay;
+                  // Solved state comes exclusively from the GVChallenge
+                  // collection (via /api/gvchallenge/progress). It is
+                  // intentionally NOT cross-checked against Redux's
+                  // user.solvedQuestions — Company/Pattern/Sheet/Roadmap
+                  // solves must never affect GV Challenge rows.
                   const isDone = completedDayNums.has(q.dayNumber);
                   const dc = diffColor(q.difficulty);
 
@@ -807,13 +909,38 @@ export default function GVChallenge() {
                             style={{ background: 'var(--orange-dim)', color: 'var(--orange)' }}>
                             📅 Today
                           </span>
+                        ) : q.dayNumber > currentDay ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                            style={{ background: 'var(--bg-hover)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>
+                            🔒 Locked
+                          </span>
                         ) : (
                           <span style={{ color: 'var(--text-3)' }}>—</span>
                         )}
                       </span>
 
                       <span>
-                        {getLeetCodeUrl(q) ? (
+                        {isDone ? (
+                          /* Read-only solved badge — no manual marking required. */
+                          <span
+                            className="text-xs font-bold"
+                            style={{ color: '#4ade80' }}
+                            title={`Day ${q.dayNumber} solved`}
+                          >
+                            ✓ Solved
+                          </span>
+                        ) : q.dayNumber > currentDay ? (
+                          /* Sequential unlock: a future day is locked until
+                             the previous days are completed. Both "Open
+                             Problem" and "Mark Solved" are disabled. */
+                          <span
+                            className="text-xs font-semibold cursor-not-allowed"
+                            style={{ color: 'var(--text-3)' }}
+                            title="Complete previous day first."
+                          >
+                            🔒 Locked
+                          </span>
+                        ) : getLeetCodeUrl(q) ? (
                           <button
                             onClick={() => {
                               window.open(getLeetCodeUrl(q), '_blank');

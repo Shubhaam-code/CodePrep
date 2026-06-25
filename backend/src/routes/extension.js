@@ -138,7 +138,9 @@ router.post('/sync', authMiddleware, async (req, res) => {
       company || null,
       challenge || null,
       day !== undefined && day !== null ? Number(day) : null,
-      syncContext || null
+      syncContext || null,
+      pattern || null,
+      sheet || null
     );
 
     // 6. Save to MongoDB (ExtensionSubmission history)

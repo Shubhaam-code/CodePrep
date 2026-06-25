@@ -2,9 +2,16 @@ const User = require('../models/User');
 const Submission = require('../models/Submission');
 const CompanyQuestion = require('../models/CompanyQuestion');
 const githubRepositoryService = require('../services/githubRepositoryService');
+const { REPOS, resolveRepoForContext } = require('../services/contextRepo');
 
 /**
- * Check if the repository "company-preparation" exists, and create it if it does not.
+ * Check if the repository exists, and create it if it does not.
+ *
+ * Accepts an optional `repo` body field (or any of the per-context fields
+ * `company` / `challenge` / `pattern` / `sheet`) so the client can create
+ * whichever dedicated repository it needs. Defaults to `company-preparation`
+ * for backward compatibility with the original single-repo flow.
+ *
  * POST /api/github/create-repository
  */
 exports.createPrepRepository = async (req, res) => {
@@ -29,10 +36,26 @@ exports.createPrepRepository = async (req, res) => {
       });
     }
 
+    // Decide which repository to create. Explicit `repo` wins; otherwise
+    // derive from the supplied context fields; otherwise fall back to the
+    // historical default.
+    let repo = (req.body && typeof req.body.repo === 'string' && req.body.repo.trim())
+      ? req.body.repo.trim()
+      : null;
+    if (!repo) {
+      const { repo: derived } = resolveRepoForContext({
+        company: req.body?.company,
+        challenge: req.body?.challenge,
+        pattern: req.body?.pattern,
+        sheet: req.body?.sheet,
+      });
+      repo = derived;
+    }
+
     // 1. Check if the repository already exists
     let repoExists = false;
     try {
-      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token, repo);
     } catch (err) {
       console.error('Error checking repository existence:', err.response ? err.response.data : err.message);
       return res.status(400).json({
@@ -45,17 +68,17 @@ exports.createPrepRepository = async (req, res) => {
       return res.status(200).json({
         success: true,
         repositoryCreated: false,
-        repositoryName: 'company-preparation',
+        repositoryName: repo,
       });
     }
 
     // 2. Create the repository since it does not exist
     try {
-      await githubRepositoryService.createRepository(token);
+      await githubRepositoryService.createRepository(token, repo);
       return res.status(201).json({
         success: true,
         repositoryCreated: true,
-        repositoryName: 'company-preparation',
+        repositoryName: repo,
       });
     } catch (err) {
       console.error('Error creating repository:', err.response ? err.response.data : err.message);
@@ -348,7 +371,12 @@ exports.getStats = async (req, res) => {
     }
 
     const githubConnected = user.githubConnected || false;
-    const repositoryName = githubConnected ? 'company-preparation' : null;
+
+    // The legacy single-repo UI shows the company-prep repo as the primary
+    // one. We additionally expose the list of all dedicated repos so the
+    // client can display / check each one without guessing names.
+    const repositoryName = githubConnected ? REPOS.company : null;
+    const availableRepositories = Object.values(REPOS);
 
     // Retrieve all submissions for the logged-in user
     const submissions = await Submission.find({ userId })
@@ -399,6 +427,7 @@ exports.getStats = async (req, res) => {
     return res.status(200).json({
       githubConnected,
       repositoryName,
+      availableRepositories,
       totalSolvedQuestions,
       totalCompaniesCovered,
       lastSyncAt,

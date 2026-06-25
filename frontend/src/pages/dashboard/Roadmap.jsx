@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 import { useAppSelector, useAppDispatch } from '../../store/store';
-import { updateSolvedQuestions } from '../../store/authSlice';
+import { setUser } from '../../store/authSlice';
 import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';
-import QuestionLinks from '../../components/QuestionLinks';
+import QuestionLinks, { getSyncContext, isQuestionSolvedInContext } from '../../components/QuestionLinks';
 
 // Hardcoded roadmap data
 const ROADMAP = [
@@ -135,6 +135,26 @@ export default function Roadmap() {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAppSelector(s => s.auth);
 
+  // Refresh the cached user from the backend on mount so solved state
+  // recorded by the LeetCode Extension (in another tab / session) becomes
+  // visible without requiring the user to manually click the checkbox.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get('/api/auth/me')
+      .then((res) => {
+        if (!cancelled && res?.data) {
+          dispatch(setUser(res.data));
+        }
+      })
+      .catch(() => {
+        // Silent fallback to cached Redux user.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch]);
+
   // Handle pattern selection and API fetch
   const handlePatternClick = async (pattern) => {
     setActivePattern(pattern);
@@ -150,24 +170,6 @@ export default function Roadmap() {
       console.error('Error fetching pattern questions:', err);
     } finally {
       setIsLoadingQ(false);
-    }
-  };
-
-  // Toggle solved status (POST/DELETE to /api/user/solve/:id)
-  const handleSolveToggle = async (questionId, isSolved) => {
-    if (!isAuthenticated) return;
-    try {
-      let updatedList;
-      if (isSolved) {
-        const response = await apiClient.delete(`/api/user/solve/${questionId}`);
-        updatedList = response.data;
-      } else {
-        const response = await apiClient.post(`/api/user/solve/${questionId}`);
-        updatedList = response.data;
-      }
-      dispatch(updateSolvedQuestions(updatedList));
-    } catch (err) {
-      console.error('Error updating solved status:', err);
     }
   };
 
@@ -431,8 +433,11 @@ export default function Roadmap() {
                             </thead>
                             <tbody className="divide-y divide-[#07070F]/50">
                               {questions.map((q, idx) => {
-                                const isSolved = user?.solvedQuestions?.some(
-                                  (sq) => sq.questionId === q._id
+                                const patternSyncContext = getSyncContext({ pattern: activePattern?.name });
+                                const isSolved = isQuestionSolvedInContext(
+                                  user,
+                                  q._id,
+                                  patternSyncContext
                                 );
 
                                 return (
@@ -480,14 +485,19 @@ export default function Roadmap() {
                                       {q.acceptance || 'N/A'}
                                     </td>
 
-                                    {/* Solved Checkbox */}
+                                    {/* Read-only Solved Indicator */}
                                     <td className="px-6 py-4 text-center">
-                                      <input
-                                        type="checkbox"
-                                        checked={!!isSolved}
-                                        onChange={() => handleSolveToggle(q._id, !!isSolved)}
-                                        className="cursor-pointer h-4 w-4 rounded border-slate-850 bg-slate-950 text-[#FF7A00] focus:ring-[#FF7A00] accent-[#FF7A00]"
-                                      />
+                                      <span
+                                        className={`inline-flex items-center justify-center h-5 w-5 rounded-md text-xs font-bold ${
+                                          isSolved
+                                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                            : 'bg-slate-950 text-slate-600 border border-slate-850'
+                                        }`}
+                                        title={isSolved ? 'Solved' : 'Not solved'}
+                                        aria-label={isSolved ? 'Solved' : 'Not solved'}
+                                      >
+                                        {isSolved ? '✓' : ''}
+                                      </span>
                                     </td>
 
                                     {/* External Links */}

@@ -2,18 +2,45 @@ const Submission = require('../models/Submission');
 const Question = require('../models/Question');
 const CompanyQuestion = require('../models/CompanyQuestion');
 const User = require('../models/User');
+const GVChallenge = require('../models/GVChallenge');
 const githubRepositoryService = require('./githubRepositoryService');
+const { resolveRepoForContext } = require('./contextRepo');
 
 /**
- * Save a submission and push it to GitHub if connected
- * @param {string} userId 
- * @param {string} questionId 
- * @param {string} code 
- * @param {string} language 
- * @param {string|null} company - Optional company name from the frontend
+ * Save a submission and push it to GitHub if connected.
+ *
+ * Solutions are routed to a dedicated GitHub repository based on the
+ * learning context:
+ *   - GV Challenge      → gvishwanathan-challenge
+ *   - Pattern roadmap   → pattern-roadmap
+ *   - Sheet roadmap     → sheet-roadmap
+ *   - Company questions → company-preparation
+ *   - General           → general-prep
+ *
+ * @param {string} userId
+ * @param {string} questionId
+ * @param {string} code
+ * @param {string} language
+ * @param {string|null} [company]    - Optional company name from the frontend
+ * @param {string|null} [challenge]  - Challenge tag (e.g. "gv")
+ * @param {number|null} [day]        - Day number for GV challenge
+ * @param {string|null} [pattern]    - DSA pattern slug
+ * @param {string|null} [sheet]      - Sheet slug
+ * @param {string|null} [syncContext] - Pre-computed syncContext token
  * @returns {Promise<object>}
  */
-const saveSubmissionAndPush = async (userId, questionId, code, language, company = null, challenge = null, day = null, syncContext = null) => {
+const saveSubmissionAndPush = async (
+  userId,
+  questionId,
+  code,
+  language,
+  company = null,
+  challenge = null,
+  day = null,
+  syncContext = null,
+  pattern = null,
+  sheet = null
+) => {
   // 1. Find question by questionId
   const question = await Question.findById(questionId);
   if (!question) {
@@ -60,7 +87,36 @@ const saveSubmissionAndPush = async (userId, questionId, code, language, company
     syncContext: currentContext,
     solvedAt: now
   });
-    
+
+    // For GV Challenge syncs, also append a row to the GVChallenge
+    // collection. This is the collection /api/gvchallenge/progress
+    // reads from to compute totalCompleted + currentStreak, so it's
+    // what makes the day advance on the GV Challenge page after an
+    // Extension sync. Without this write, the GV page would never
+    // see the solve (it's intentionally decoupled from
+    // user.solvedQuestions). The user.solvedQuestions push above
+    // remains the source for the dashboard's totalSolved.
+    if (challenge === 'gv' && Number.isFinite(Number(day)) && Number(day) > 0) {
+      try {
+        const dayExists = await GVChallenge.findOne({
+          userId,
+          dayNumber: Number(day),
+        });
+        if (!dayExists) {
+          await GVChallenge.create({
+            userId,
+            dayNumber: Number(day),
+            questionTitle: question.title,
+            questionUrl: question.leetcodeUrl || '',
+            completedAt: now,
+            linkedinPosted: false,
+          });
+        }
+      } catch (gvErr) {
+        console.error(`Failed to record GVChallenge row for Day ${day}:`, gvErr.message);
+      }
+    }
+
     // Streak logic matching user.js
     const lastSolved = user.streak.lastSolvedDate;
     if (!lastSolved) {
@@ -96,13 +152,42 @@ console.log("Has Token:", !!user.githubAccessToken);
 
     const questionTitle = question.title;
 
+    // Resolve which dedicated repository this submission belongs to.
+    const { repo } = resolveRepoForContext({
+      company,
+      challenge,
+      pattern,
+      sheet,
+      syncContext,
+    });
+
     try {
-      // Verify repository exists
-      const repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+      // Verify the dedicated repository exists. For the GV Challenge we
+      // auto-create the repository on first sync so that solving Day 1
+      // works without requiring a manual /create-repository call. The
+      // Company flow keeps its existing "create repo manually first"
+      // contract — the auto-create only kicks in for the GV context.
+      let repoExists = false;
+      try {
+        repoExists = await githubRepositoryService.checkRepositoryExists(username, token, repo);
+      } catch (err) {
+        console.error(`Error checking repository existence for ${repo}:`, err.message);
+      }
+
+      if (!repoExists && challenge === 'gv') {
+        try {
+          await githubRepositoryService.createRepository(token, repo);
+          repoExists = true;
+          console.log(`Auto-created GV Challenge repository "${repo}" for user: ${username}`);
+        } catch (createRepoErr) {
+          console.error(`Failed to auto-create GV Challenge repository "${repo}":`, createRepoErr.message);
+        }
+      }
+
       if (repoExists) {
         let filePath;
         let isReadyToPush = false;
-        
+
         const extensionMap = {
           'cpp': 'cpp',
           'c++': 'cpp',
@@ -130,12 +215,69 @@ console.log("Has Token:", !!user.githubAccessToken);
         const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
 
         if (challenge === 'gv') {
-          // Ignore company folder logic and give challenge routing higher priority than company routing
+          // GV Challenge lives in its own repo under a dedicated DAY folder.
+          // Ensure both the root folder (GVishwanathanChallenge/) and the
+          // per-day subfolder (DAY<n>/) exist by creating .gitkeep placeholders
+          // on first use. GitHub's Contents API does not create intermediate
+          // directories automatically, so each parent in the path needs to
+          // exist before we can push the solution file.
+          const rootFolder = 'GVishwanathanChallenge';
+          const dayFolder  = `DAY${Number(day)}`;
+
+          const ensureFolder = async (folderPath) => {
+            const gitkeepPath = `${folderPath}/.gitkeep`;
+            try {
+              const exists = await githubRepositoryService.checkFileExists(
+                username,
+                token,
+                gitkeepPath,
+                repo
+              );
+              if (exists) return true;
+            } catch (err) {
+              console.error(`Error checking folder existence for ${folderPath}:`, err.message);
+              return false;
+            }
+
+            try {
+              const base64Content = Buffer.from('').toString('base64');
+              const commitMessage = `Initialize ${folderPath} folder (Auto-created)`;
+              await githubRepositoryService.createFile(
+                username,
+                token,
+                gitkeepPath,
+                commitMessage,
+                base64Content,
+                repo
+              );
+              console.log(`Auto-created folder "${folderPath}" in ${repo}.`);
+              return true;
+            } catch (err) {
+              console.error(`Failed to auto-create folder "${folderPath}" in ${repo}:`, err.message);
+              return false;
+            }
+          };
+
+          const rootReady = await ensureFolder(rootFolder);
+          const dayReady  = rootReady ? await ensureFolder(`${rootFolder}/${dayFolder}`) : false;
+
+          if (dayReady) {
+            const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+            filePath = `${rootFolder}/${dayFolder}/${sanitizedTitle}.${ext}`;
+            isReadyToPush = true;
+          }
+        } else if (pattern) {
+          // Pattern roadmap: organise by pattern slug.
           const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-          filePath = `GVishwanathanChallenge/DAY${Number(day)}/${sanitizedTitle}.${ext}`;
+          filePath = `${pattern}/${sanitizedTitle}.${ext}`;
+          isReadyToPush = true;
+        } else if (sheet) {
+          // Sheet roadmap: organise by sheet slug.
+          const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+          filePath = `${sheet}/${sanitizedTitle}.${ext}`;
           isReadyToPush = true;
         } else {
-          // Determine company folder name: prefer submission company, fallback to CompanyQuestion lookup
+          // Company flow (default + general): organise by company folder.
           let folderCompany;
           if (company) {
             folderCompany = company.charAt(0).toUpperCase() + company.slice(1).toLowerCase();
@@ -149,18 +291,18 @@ console.log("Has Token:", !!user.githubAccessToken);
           const gitkeepPath = `${folderCompany}/.gitkeep`;
           let folderExists = false;
           try {
-            folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+            folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath, repo);
           } catch (err) {
             console.error(`Error checking folder existence during auto-sync for ${folderCompany}:`, err.message);
           }
 
           if (!folderExists) {
-            console.log(`Company folder for "${folderCompany}" does not exist. Creating automatically...`);
+            console.log(`Company folder for "${folderCompany}" does not exist in ${repo}. Creating automatically...`);
             try {
               const base64Content = Buffer.from('').toString('base64');
               const commitMessage = `Initialize folder structure for ${folderCompany} (Auto-created)`;
-              await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
-              console.log(`Successfully created folder for "${folderCompany}".`);
+              await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content, repo);
+              console.log(`Successfully created folder for "${folderCompany}" in ${repo}.`);
               folderExists = true;
             } catch (createErr) {
               console.error(`Failed to automatically create company folder for ${folderCompany}:`, createErr.message);
@@ -176,10 +318,49 @@ console.log("Has Token:", !!user.githubAccessToken);
         }
 
         if (isReadyToPush) {
+          // ── Backfill guard ─────────────────────────────────────────────
+          // If this question is already recorded as solved in MongoDB for
+          // this syncContext, the file may still be missing from GitHub
+          // (e.g. the previous sync crashed mid-flight, the repo was
+          // recreated, or the question was marked solved via the
+          // "Already Solved Before" flow which intentionally skips
+          // GitHub). Before skipping the push, probe GitHub for the
+          // expected file path:
+          //   • file exists  → skip (no duplicate commit, README unchanged)
+          //   • file missing → fall through and push (backfill the file)
+          // MongoDB state is unchanged either way: the surrounding code
+          // already gates user.solvedQuestions / Submission writes on
+          // !alreadySolved, so we never duplicate MongoDB records.
+          let fileExistsOnGitHub = false;
+          if (alreadySolved) {
+            try {
+              const existing = await githubRepositoryService.getFileDetails(
+                username,
+                token,
+                filePath,
+                repo
+              );
+              fileExistsOnGitHub = !!existing;
+            } catch (probeErr) {
+              console.error(
+                `Error probing ${filePath} on ${repo}; defaulting to push attempt:`,
+                probeErr.message
+              );
+            }
+            if (fileExistsOnGitHub) {
+              console.log(
+                `Skipping GitHub push: ${filePath} already exists in ${repo} and day is already solved in MongoDB.`
+              );
+              isReadyToPush = false;
+            }
+          }
+        }
+
+        if (isReadyToPush) {
           // Get existing file SHA if any
           let sha = null;
           try {
-            const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath);
+            const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath, repo);
             if (fileDetails) {
               sha = fileDetails.sha;
             }
@@ -189,16 +370,16 @@ console.log("Has Token:", !!user.githubAccessToken);
 
           // Push file
           const base64Content = Buffer.from(code).toString('base64');
-          const commitMessage = sha 
-            ? `Update solution for ${questionTitle} (Auto-sync)` 
+          const commitMessage = sha
+            ? `Update solution for ${questionTitle} (Auto-sync)`
             : `Add solution for ${questionTitle} (Auto-sync)`;
 
-          await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha);
+          await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha, repo);
           githubSynced = true;
 
-          // 5. Update README.md after successful sync
+          // 5. Update README.md after successful sync (scoped to this repo)
           try {
-            console.log('Compiling CodePrep progress and updating README.md...');
+            console.log(`Compiling CodePrep progress and updating README.md in ${repo}...`);
             const populatedUser = await User.findById(userId).populate({
               path: 'solvedQuestions.questionId',
               model: 'Question'
@@ -217,10 +398,10 @@ console.log("Has Token:", !!user.githubAccessToken);
             const companyMap = {};
             for (const cq of companyQuestions) {
               if (!cq.questionId) continue;
-              
+
               const rawCompany = cq.company || 'general';
               const companyName = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
-              
+
               if (!companyMap[companyName]) {
                 companyMap[companyName] = new Set();
               }
@@ -244,7 +425,7 @@ console.log("Has Token:", !!user.githubAccessToken);
             }
 
             // Build README markdown content
-            let readmeContent = `# CodePrep Progress\n\nTotal Solved: ${totalSolved}\n`;
+            let readmeContent = `# ${repo} – CodePrep Progress\n\nTotal Solved: ${totalSolved}\n`;
             const sortedCompanies = Object.keys(companyMap).sort();
             for (const comp of sortedCompanies) {
               readmeContent += `\n## ${comp}\n\n`;
@@ -260,7 +441,7 @@ console.log("Has Token:", !!user.githubAccessToken);
 
             let readmeSha = null;
             try {
-              const readmeDetails = await githubRepositoryService.getFileDetails(username, token, readmePath);
+              const readmeDetails = await githubRepositoryService.getFileDetails(username, token, readmePath, repo);
               if (readmeDetails) {
                 readmeSha = readmeDetails.sha;
               }
@@ -268,14 +449,14 @@ console.log("Has Token:", !!user.githubAccessToken);
               console.error('Error fetching README details:', err.message);
             }
 
-            await githubRepositoryService.createOrUpdateFile(username, token, readmePath, readmeCommitMsg, readmeBase64, readmeSha);
-            console.log('Successfully updated README.md on GitHub.');
+            await githubRepositoryService.createOrUpdateFile(username, token, readmePath, readmeCommitMsg, readmeBase64, readmeSha, repo);
+            console.log(`Successfully updated README.md in ${repo}.`);
           } catch (readmeErr) {
-            console.error('Failed to update README.md on GitHub:', readmeErr.message);
+            console.error(`Failed to update README.md in ${repo}:`, readmeErr.message);
           }
         }
       } else {
-        console.warn(`GitHub repository "company-preparation" does not exist for user: ${username}`);
+        console.warn(`GitHub repository "${repo}" does not exist for user: ${username}`);
       }
     } catch (pushErr) {
       console.error('Failed to auto-sync submission to GitHub:', pushErr.message);

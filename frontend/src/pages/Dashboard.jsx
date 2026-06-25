@@ -610,7 +610,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
-  const { user }  = useAppSelector((s) => s.auth);
+  const { user } = useAppSelector((s) => s.auth);
   
   const [extensionConnected, setExtensionConnected] = useState(false);
 
@@ -647,7 +647,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  // 2. Listen for mock OAuth success messages from GitHub popup window
+  // 3. Listen for mock OAuth success messages from GitHub popup window
   useEffect(() => {
     const handleOAuthMessage = async (event) => {
       if (event.data?.type === 'oauth-success' && event.data?.provider === 'github') {

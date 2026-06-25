@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
  * Compute a sync context key from the current page context.
  * Must match the getSyncContext() logic used in the extension.
  */
-function getSyncContext({ company, challenge, day, pattern, sheet } = {}) {
+export function getSyncContext({ company, challenge, day, pattern, sheet } = {}) {
   if (challenge === 'gv' && day !== undefined && day !== null) {
     return `gv_day${day}`;
   }
@@ -17,6 +17,28 @@ function getSyncContext({ company, challenge, day, pattern, sheet } = {}) {
   if (pattern) return `pattern_${pattern}`;
   if (sheet)   return `sheet_${sheet}`;
   return 'general';
+}
+
+/**
+ * Returns true if the given question has a solved record for the user
+ * under the given syncContext. Handles both populated (`{ questionId: { _id } }`)
+ * and raw-id (`{ questionId: '...' }`) shapes, so it works for both the
+ * freshly-fetched /api/auth/me response and a localStorage-cached user.
+ */
+export function isQuestionSolvedInContext(user, questionId, syncContext) {
+  if (!user || !user.solvedQuestions || !questionId) return false;
+  const target = syncContext || 'general';
+  return user.solvedQuestions.some((sq) => {
+    const sqId =
+      typeof sq.questionId === 'object' && sq.questionId !== null
+        ? sq.questionId._id
+        : sq.questionId;
+    if (!sqId) return false;
+    return (
+      sqId.toString() === questionId.toString() &&
+      (sq.syncContext || 'general') === target
+    );
+  });
 }
 
 
@@ -85,18 +107,7 @@ console.log("CURRENT SYNC CONTEXT:", syncContext);
 
   const leetcodeLink = question.leetcodeUrl || '';
 
-  const isSolved =
-  user?.solvedQuestions?.some((q) => {
-    const solvedQuestionId =
-      typeof q.questionId === "object"
-        ? q.questionId._id
-        : q.questionId;
-
-    return (
-      solvedQuestionId?.toString() === question._id.toString() &&
-      (q.syncContext || "general") === syncContext
-    );
-  }) || false;
+  const isSolved = isQuestionSolvedInContext(user, question._id, syncContext);
 
   const handleOpenProblem = () => {
     if (!leetcodeLink) return;
