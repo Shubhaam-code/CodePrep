@@ -6,6 +6,25 @@ import apiClient from '../api/axios';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
+ * Compute a sync context key from the current page context.
+ * Must match the getSyncContext() logic used in the extension.
+ */
+function getSyncContext({ company, challenge, day, pattern, sheet } = {}) {
+  if (challenge === 'gv' && day !== undefined && day !== null) {
+    return `gv_day${day}`;
+  }
+  if (company) return `company_${company}`;
+  if (pattern) return `pattern_${pattern}`;
+  if (sheet)   return `sheet_${sheet}`;
+  return 'general';
+}
+
+/** localStorage key for a solved mark in a given context */
+function solvedKey(questionId, syncContext) {
+  return `codeprep_solved__${questionId}__${syncContext}`;
+}
+
+/**
  * Toast component to render success or error alerts dynamically.
  */
 function Toast({ message, type, onDone }) {
@@ -37,15 +56,29 @@ function Toast({ message, type, onDone }) {
 
 /**
  * QuestionLinks component that displays the primary practice link for LeetCode questions
- * and a "Mark Solved" button to submit/sync solution progress to GitHub.
+ * and a context-aware "Mark Solved" button that tracks solved state per syncContext.
  *
  * @param {Object} props
- * @param {Object} props.question - The question document
- * @param {string} [props.company] - Optional company name for submission context
+ * @param {Object} props.question    - The question document
+ * @param {string} [props.company]   - Company context (e.g. "google", "adobe")
+ * @param {string} [props.challenge] - Challenge type (e.g. "gv")
+ * @param {number} [props.day]       - Day number (used with challenge="gv")
+ * @param {string} [props.pattern]   - DSA pattern context
+ * @param {string} [props.sheet]     - Sheet context
  */
-export default function QuestionLinks({ question, company }) {
+export default function QuestionLinks({ question, company, challenge, day, pattern, sheet }) {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
+
+  // Compute the current sync context from the provided props
+  const syncContext = getSyncContext({ company, challenge, day, pattern, sheet });
+
+  // Per-context solved state — checked from localStorage so it's independent per context
+  const contextSolvedKey = question ? solvedKey(question._id, syncContext) : null;
+  const [isSolvedInContext, setIsSolvedInContext] = useState(() => {
+    if (!contextSolvedKey) return false;
+    return localStorage.getItem(contextSolvedKey) === 'true';
+  });
 
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -53,24 +86,37 @@ export default function QuestionLinks({ question, company }) {
   if (!question) return null;
 
   const leetcodeLink = question.leetcodeUrl || '';
-  console.log("QUESTION LINKS COMPANY:", company);
 
-  // Check if the question is already solved
-  const isSolved = user?.solvedQuestions?.some(
+  // Global solved state — kept for visual strikethrough / row highlights used by callers
+  const isGloballySolved = user?.solvedQuestions?.some(
     (sq) => sq.questionId === question._id
   );
+
+  // Button "solved" = solved specifically in this context
+  const isSolved = isSolvedInContext;
 
   const handleOpenProblem = () => {
     if (!leetcodeLink) return;
     const separator = leetcodeLink.includes('?') ? '&' : '?';
-    const targetUrl = company
-      ? `${leetcodeLink}${separator}company=${encodeURIComponent(company)}`
+
+    // Build URL params matching the syncContext
+    const params = new URLSearchParams();
+    if (company)   params.set('company', company);
+    if (challenge) params.set('challenge', challenge);
+    if (day !== undefined && day !== null) params.set('day', String(day));
+    if (pattern)   params.set('pattern', pattern);
+    if (sheet)     params.set('sheet', sheet);
+
+    const queryString = params.toString();
+    const targetUrl = queryString
+      ? `${leetcodeLink}${separator}${queryString}`
       : leetcodeLink;
+
     window.open(targetUrl, '_blank');
   };
 
   const handleMarkSolved = async () => {
-    if (isLoading) return;
+    if (isLoading || isSolved) return;
     setIsLoading(true);
     setToast(null);
 
@@ -80,12 +126,23 @@ export default function QuestionLinks({ question, company }) {
         language: 'javascript',
         code: `// Solution for ${question.title} solved on CodePrep\n`,
         company: company || null,
+        challenge: challenge || null,
+        day: day !== undefined && day !== null ? Number(day) : null,
+        pattern: pattern || null,
+        sheet: sheet || null,
+        syncContext,
       });
 
       if (response.data.success) {
+        // Persist the per-context solved flag to localStorage
+        if (contextSolvedKey) {
+          localStorage.setItem(contextSolvedKey, 'true');
+        }
+        setIsSolvedInContext(true);
+
         setToast({ message: 'Question synced to Github', type: 'success' });
-        
-        // Fetch the updated user profile to sync solvedQuestions and stats
+
+        // Refresh global user profile so solvedQuestions / streak stats stay accurate
         const profileRes = await apiClient.get('/api/auth/me');
         dispatch(setUser(profileRes.data));
       } else {
@@ -131,9 +188,14 @@ export default function QuestionLinks({ question, company }) {
         {isAuthenticated && (
           <button
             onClick={handleMarkSolved}
-            disabled={isLoading}
-            className={`cursor-pointer w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-85 shadow-md ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            disabled={isLoading || isSolved}
+            title={isSolved ? `Already solved in context: ${syncContext}` : 'Mark as solved'}
+            className={`w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all hover:opacity-85 shadow-md ${
+              isSolved
+                ? 'cursor-not-allowed opacity-80'
+                : isLoading
+                ? 'opacity-50 cursor-not-allowed'
+                : 'cursor-pointer'
             }`}
             style={{
               background: isSolved ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.02)',
@@ -147,7 +209,7 @@ export default function QuestionLinks({ question, company }) {
                 <span>Syncing...</span>
               </>
             ) : isSolved ? (
-              <span>Solved</span>
+              <span>✓ Solved</span>
             ) : (
               <span>Mark Solved</span>
             )}
@@ -167,4 +229,3 @@ export default function QuestionLinks({ question, company }) {
     </div>
   );
 }
-

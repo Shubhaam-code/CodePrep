@@ -6,7 +6,7 @@ const submissionService = require('../services/submissionService');
  */
 exports.solveQuestion = async (req, res) => {
   try {
-    const { questionId, code, language, company } = req.body;
+    const { questionId, code, language, company, challenge, day, pattern, sheet, syncContext } = req.body;
 
     if (!questionId) {
       return res.status(400).json({ success: false, message: 'Bad Request: questionId is required.' });
@@ -19,13 +19,26 @@ exports.solveQuestion = async (req, res) => {
     }
 
     // Sanitize optional company field
-    const sanitizedCompany = (company && typeof company === 'string') 
-      ? company.trim().toLowerCase() 
+    const sanitizedCompany = (company && typeof company === 'string')
+      ? company.trim().toLowerCase()
       : null;
+
+    const sanitizedChallenge = (challenge && typeof challenge === 'string') ? challenge.trim() : null;
+    const sanitizedDay       = (day !== undefined && day !== null && !isNaN(Number(day))) ? Number(day) : null;
+    const sanitizedSyncContext = (syncContext && typeof syncContext === 'string') ? syncContext.trim() : null;
 
     const userId = req.user.id;
 
-    const result = await submissionService.saveSubmissionAndPush(userId, questionId, code, language, sanitizedCompany);
+    const result = await submissionService.saveSubmissionAndPush(
+      userId,
+      questionId,
+      code,
+      language,
+      sanitizedCompany,
+      sanitizedChallenge,
+      sanitizedDay,
+      sanitizedSyncContext
+    );
 
     return res.status(200).json({
       success: true,
