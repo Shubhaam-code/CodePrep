@@ -280,7 +280,7 @@ const run = async () => {
     await connectDB();
     console.log('🚀 Starting seed...\n');
 
-    // await seedRepo1();
+    await seedRepo1();
     await seedRepo2();
 
     const totalQuestions = await Question.countDocuments();

@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import DSAPractice from './pages/dashboard/DSAPractice';
 import Roadmap from './pages/dashboard/Roadmap';
+import PatternDetail from './pages/dashboard/PatternDetail';
 import History from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
 import GVChallenge from './pages/dashboard/GVChallenge';
@@ -146,11 +147,15 @@ export default function App() {
             path="/dashboard/gvchallenge" 
             element={<GVChallenge />} 
           />
-          <Route 
-            path="/dashboard/roadmap" 
-            element={<Roadmap />} 
+          <Route
+            path="/dashboard/roadmap"
+            element={<Roadmap />}
           />
-          <Route 
+          <Route
+            path="/dashboard/roadmap/pattern/:category/:pattern"
+            element={<PatternDetail />}
+          />
+          <Route
             path="/dashboard/history" 
             element={<History />} 
           />
