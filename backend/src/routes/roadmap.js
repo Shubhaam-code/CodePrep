@@ -2,9 +2,20 @@ const express = require('express');
 const router = express.Router();
 const RoadmapPattern = require('../models/RoadmapPattern');
 const Question = require('../models/Question');
+const roadmapController = require('../controllers/roadmapController');
 const authMiddleware = require('../middleware/auth');
 
 router.use(authMiddleware);
+
+/**
+ * @route   GET /api/roadmap
+ * @desc    Phase 5.1 — flat list of roadmap patterns in source order.
+ *          One entry per pattern in roadmap.json with patternId,
+ *          patternName, roadmapCategory, totalQuestions,
+ *          solvedQuestions (always 0 for now), and roadmapOrder.
+ *          No unlock / streak / history logic yet.
+ */
+router.get('/', roadmapController.listRoadmap);
 
 /**
  * @route   GET /api/roadmap/patterns
@@ -102,5 +113,23 @@ router.get('/patterns/:category/:pattern/questions', async (req, res) => {
     });
   }
 });
+
+/**
+ * @route   GET /api/roadmap/:patternId
+ * @desc    Phase 5.2 — single-pattern detail. Returns the pattern
+ *          metadata + every Question tagged with this patternId,
+ *          sorted by roadmapOrder ascending. Each question is
+ *          stamped with solved:false (Phase 5.2 placeholder; unlock
+ *          / streak / history are out of scope here).
+ *
+ *          Registered AFTER /patterns so the existing
+ *          /api/roadmap/patterns route still wins for that exact
+ *          path (Express matches routes in declaration order).
+ *
+ *   Response: 200 with { patternId, patternName, roadmapCategory,
+ *                         totalQuestions, questions[] }
+ *   Response: 404 when patternId is not in roadmap.json
+ */
+router.get('/:patternId', roadmapController.getPattern);
 
 module.exports = router;

@@ -8,7 +8,7 @@
 | Problem |
 |---------|
 | Linked List Cycle II |
-| Remove nth Node from the End of List |
+| Remove Nth Node From End of List |
 | Find the Duplicate Number |
 | Palindrome Linked List |
 
@@ -24,17 +24,17 @@
 ## 3. Prefix Sum
 | Problem |
 |---------|
-| Find the middle index in array |
+| Find the Middle Index in Array |
 | Product of array except self |
-| Maximum product subarray |
-| Number of ways to split array |
-| Range Sum Query 2D |
+| Maximum Product Subarray |
+| Number of Ways to Split Array |
+| Range Sum Query 2D - Immutable |
 
 ## 4. Sliding Window
 | Category | Problem |
 |----------|---------|
 | Fixed Size | Maximum Sum Subarray of Size K |
-| | Number of Subarrays having Average Greater or Equal to Threshold |
+| | Number of Sub-arrays of Size K and Average Greater than or Equal to Threshold |
 | | Repeated DNA sequences |
 | | Permutation in String |
 | | Sliding Subarray Beauty |
@@ -51,7 +51,7 @@
 | Problem |
 |---------|
 | Two Sum II - Input Array is Sorted |
-| Dutch National Flag: Sort Colors |
+| Sort Colors  |
 | Next Permutation |
 | Bag of Tokens |
 | Container with most water |
@@ -61,7 +61,7 @@
 | Problem |
 |---------|
 | Missing Number |
-| Find Missing Numbers |
+| Find All Numbers Disappeared in an Array |
 | Set Mismatch |
 | First Missing Positive |
 
@@ -84,7 +84,7 @@
 | Problem |
 |---------|
 | Shortest Path in Binary Matrix |
-| Rotten Oranges |
+| Rotting Oranges |
 | As Far From Land as Possible |
 | Word Ladder |
 
@@ -93,9 +93,9 @@
 |---------|
 | Number of Closed Islands |
 | Coloring a Border |
-| DFS from boundary: Number of Enclaves |
-| Shortest time: Time Needed to Inform all Employees |
-| Cyclic Find: Find Eventual Safe States |
+| Number of Enclaves |
+| Time Needed to Inform All Employees |
+| Find Eventual Safe States |
 
 ## 11. Backtracking
 | Problem |
@@ -115,7 +115,7 @@
 | Find Minimum in Rotated Sorted Array |
 | Find Peak Element |
 | Single element in a sorted array |
-| Minimum Time to Arrive on Time |
+| Minimum Speed to Arrive on Time |
 | Capacity to Ship Packages within 'd' Days |
 | Koko Eating Bananas |
 | Find in Mountain Array |
@@ -134,7 +134,7 @@
 | Problem |
 |---------|
 | Top K Frequent Elements |
-| Kth Largest Element |
+| Kth Largest Element in an Array |
 | Ugly Number II |
 | K Closest Points to Origin |
 
@@ -169,35 +169,35 @@
 | Level Order Traversal | Level order Traversal |
 | | Zigzag Level order Traversal |
 | | Even Odd Tree |
-| | Reverse odd Levels |
+| | Reverse Odd Levels of Binary Tree |
 | | Deepest Leaves Sum |
 | | Add one row to Tree |
 | | Maximum width of Binary Tree |
 | | All Nodes Distance K in Binary tree |
-| Tree Construction | Construct BT from Preorder and Inorder |
-| | Construct BT from Postorder and Inorder |
+| Tree Construction | Construct Binary Tree from Inorder and Postorder Traversal |
+| | Construct Binary Tree from Preorder and Inorder Traversal |
 | | Maximum Binary Tree |
-| | Construct BST from Preorder |
-| Height related | Maximum Depth of BT |
+| | Construct Binary Search Tree from Preorder Traversal |
+| Height related | Maximum Depth of Binary Tree |
 | | Balanced Binary Tree |
 | | Diameter of Binary Tree |
-| | Minimum Depth of BT |
+| | Minimum Depth of Binary Tree |
 | Root to leaf path | Binary Tree Paths |
 | | Path Sum II |
-| | Sum Root to Leaf numbers |
+| | Sum Root to Leaf Numbers |
 | | Smallest string starting from Leaf |
-| | Insufficient nodes in root to Leaf |
+| | Insufficient Nodes in Root to Leaf Paths |
 | | Pseudo-Palindromic Paths in a Binary Tree |
 | | Binary Tree Maximum Path Sum |
-| Ancestor problem | LCA of Binary Tree |
+| Ancestor problem | Lowest Common Ancestor of a Binary Tree |
 | | Maximum difference between node and ancestor |
-| | LCA of deepest leaves |
+| | Lowest Common Ancestor of Deepest Leaves  |
 | | Kth Ancestor of a Tree Node |
 | Binary Search Tree | Validate BST |
 | | Range Sum of BST |
 | | Minimum Absolute Difference in BST |
 | | Insert into a BST |
-| | LCA of BST |
+| | Lowest Common Ancestor of a Binary Search Tree |
 
 ## 19. Dynamic Programming
 | Category | Problem |
@@ -214,7 +214,7 @@
 | Longest Increasing Subsequence | Longest Increasing Subsequence |
 | | Largest Divisible Subset |
 | | Maximum Length of Pair Chain |
-| | Number of LIS |
+| | Number of Longest Increasing Subsequence |
 | | Longest String Chain |
 | DP on Grids | Unique Paths II |
 | | Minimum Path Sum |

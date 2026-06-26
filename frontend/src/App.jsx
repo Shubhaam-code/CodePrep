@@ -11,8 +11,8 @@ import CompanyPage from './pages/CompanyPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import DSAPractice from './pages/dashboard/DSAPractice';
-import Roadmap from './pages/dashboard/Roadmap';
-import PatternDetail from './pages/dashboard/PatternDetail';
+import RoadmapList from './pages/dashboard/RoadmapList';
+import RoadmapPatternDetail from './pages/dashboard/RoadmapPatternDetail';
 import History from './pages/dashboard/History';
 import TopicQuestions from './pages/dashboard/TopicQuestions';
 import GVChallenge from './pages/dashboard/GVChallenge';
@@ -149,11 +149,11 @@ export default function App() {
           />
           <Route
             path="/dashboard/roadmap"
-            element={<Roadmap />}
+            element={<RoadmapList />}
           />
           <Route
-            path="/dashboard/roadmap/pattern/:category/:pattern"
-            element={<PatternDetail />}
+            path="/roadmap/:patternId"
+            element={<RoadmapPatternDetail />}
           />
           <Route
             path="/dashboard/history" 

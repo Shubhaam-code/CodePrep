@@ -336,9 +336,14 @@ const buildAliasIndex = (questions) => {
   return byLower;
 };
 
-/** Load roadmapAliases.json. Keys are lowercased so lookups can be
- *  done on the canonical (lowercased) form of a roadmap title.
- *  Returns a Map<lowerRoadmapTitle, aliasValue>. Missing file is
+/** Load roadmapAliases.json. Keys are canonicalized with the same
+ *  canonicalize() used on roadmap titles so the lookup matches the
+ *  form produced by findBestMatch() for every roadmap title. This
+ *  means alias keys containing punctuation ("dutch national flag:
+ *  sort colors"), abbreviations ("construct bt from preorder and
+ *  inorder"), or plurals ("rotten oranges") all resolve to the same
+ *  Map key as their canonicalized roadmap counterpart.
+ *  Returns a Map<canonicalRoadmapTitle, aliasValue>. Missing file is
  *  not an error — we just skip the alias step. */
 const loadAliases = (aliasesPath) => {
   if (!fs.existsSync(aliasesPath)) return new Map();
@@ -347,7 +352,7 @@ const loadAliases = (aliasesPath) => {
   for (const [k, v] of Object.entries(raw)) {
     if (k.startsWith('_')) continue;       // comment keys, ignored
     if (typeof v !== 'string' || !v.trim()) continue;
-    map.set(String(k).toLowerCase().trim(), v.trim());
+    map.set(canonicalize(k), v.trim());
   }
   return map;
 };
