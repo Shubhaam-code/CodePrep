@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-
+import {
+  FaCodeBranch as RoadmapIcon,
+  FaTrophy as Flag,
+  FaSearch as Compass,
+  FaArrowRight as ChevronRight,
+  FaArrowRight as ArrowRight,
+} from 'react-icons/fa';
 import { useAppSelector, useAppDispatch } from '../../store/store';
 import { setUser } from '../../store/authSlice';
 import apiClient from '../../api/axios';
@@ -194,7 +200,7 @@ export default function Roadmap() {
         >
           <div className="flex items-center gap-3 select-none">
             <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
-              <Map size={20} />
+              <RoadmapIcon size={18} className="text-[#FF7A00]" />
             </div>
             <div>
               <h1 className="text-white font-bold text-lg leading-tight">DSA Roadmap</h1>

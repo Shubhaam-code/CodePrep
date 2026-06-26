@@ -111,4 +111,11 @@ githubConnected: {
   }
 );
 
+// Multikey index keeps syncContext-prefix filters (company_*, gv_*,
+// pattern_*, general, etc.) cheap as solvedQuestions grows. The
+// History → Company conversion reads only entries with syncContext
+// starting with "company_"; this index makes that scan O(matching
+// entries) instead of O(all solved).
+UserSchema.index({ 'solvedQuestions.syncContext': 1 });
+
 module.exports = mongoose.model('User', UserSchema);

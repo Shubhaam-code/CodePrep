@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import {
-  FaHome as Home, FaTrophy as Trophy, FaCodeBranch as Map, FaClock as History, FaCog as Settings, FaArrowRight as LogOut,
+  FaHome as Home, FaTrophy as Trophy, FaCodeBranch as RoadmapIcon, FaClock as History, FaCog as Settings, FaArrowRight as LogOut,
   FaBuilding as Building, FaCircle as LayoutDashboard, FaGithub as GithubIcon
 } from 'react-icons/fa';
 import { useAppDispatch, useAppSelector } from '../../store/store';
@@ -35,7 +35,7 @@ const NAV_ITEMS = [
     path: "/dashboard/gvchallenge" 
   },
   { 
-    icon: Map, 
+    icon: RoadmapIcon, 
     label: "Roadmap", 
     path: "/dashboard/roadmap"
   },
@@ -52,7 +52,7 @@ const MOBILE_TABS = [
   { icon: LayoutDashboard, label: 'Dash',              path: '/dashboard' },
   { icon: Building,        label: 'Company Questions', path: '/dashboard/dsa' },
   { icon: Trophy,          label: 'GV',                path: '/dashboard/gvchallenge' },
-  { icon: Map,             label: 'Roadmap',           path: '/dashboard/roadmap' },
+  { icon: RoadmapIcon,     label: 'Roadmap',           path: '/dashboard/roadmap' },
 ];
 
 /* ── Letter avatar color mapping ── */

@@ -1,8 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  FaCodeBranch as Map, FaTrophy as Flag, FaSearch as Compass,
-  FaArrowRight as ChevronRight, FaArrowRight as ArrowRight
+  FaCodeBranch as RoadmapIcon,
+  FaTrophy as Flag,
+  FaSearch as Compass,
+  FaArrowRight as ChevronRight,
+  FaArrowRight as ArrowRight,
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/dashboard/Sidebar';
@@ -21,7 +24,7 @@ export default function RoadmapPage() {
         {/* Top Navbar Header */}
         <div className="sticky top-0 z-30 bg-[#0B0B0F]/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Map size={18} className="text-[#FF7A00]" />
+            <RoadmapIcon size={18} className="text-[#FF7A00]" />
             <h1 className="text-white font-bold text-lg">Roadmap</h1>
           </div>
           <div className="flex items-center gap-2 bg-[#FF7A00]/10 border border-[#FF7A00]/25 rounded-xl px-3 py-1 text-xs text-[#FFB800] font-extrabold uppercase tracking-wider">
