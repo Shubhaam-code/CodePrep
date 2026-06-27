@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaExternalLinkAlt as ExternalLink, FaSpinner as Loader2 } from 'react-icons/fa';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
@@ -87,6 +88,7 @@ function Toast({ message, type, onDone }) {
  */
 export default function QuestionLinks({ question, company, challenge, day, pattern, sheet }) {
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
 
   // Compute the current sync context from the provided props
@@ -161,6 +163,9 @@ console.log("CURRENT SYNC CONTEXT:", syncContext);
         // Refresh global user profile so solvedQuestions / streak stats stay accurate
         const profileRes = await apiClient.get('/api/auth/me');
         dispatch(setUser(profileRes.data));
+        queryClient.invalidateQueries({ queryKey: ['roadmap'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['gv-progress'] });
       } else {
         setToast({ message: 'Failed to sync solution to GitHub', type: 'error' });
       }

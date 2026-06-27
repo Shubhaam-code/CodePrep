@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -44,19 +44,25 @@ export default function DSAPractice() {
   });
 
   // Filter + Sort logic
-  const filtered = companies
-    .filter(c => 
-      formatName(c)
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
-    .sort((a, b) => {
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    let result = companies || [];
+    if (query) {
+      result = result.filter(c => {
+        const normalizedCompany = c.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return normalizedCompany.includes(query);
+      });
+    }
+
+    // Sort
+    return [...result].sort((a, b) => {
       if (sort === 'az') 
         return a.localeCompare(b);
       if (sort === 'za') 
         return b.localeCompare(a);
       return 0;
     });
+  }, [companies, search, sort]);
 
   return (
     <div className="flex min-h-screen bg-[#07070F]" style={{ background: 'var(--bg-primary,#07070F)' }}>
@@ -189,11 +195,14 @@ export default function DSAPractice() {
           )}
 
           {/* EMPTY SEARCH STATE */}
-          {!isLoading && !isError && filtered.length === 0 && search.trim() !== '' && (
-            <div className="flex flex-col items-center justify-center py-20 text-center select-none">
-              <Search size={40} className="text-gray-600 mb-2" />
-              <p className="text-gray-500 text-sm font-medium">
-                No companies found for '{search}'
+          {!isLoading && !isError && filtered.length === 0 && (
+            <div className="text-center py-20 bg-[#0D0D12]/40 border border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center p-6 max-w-lg mx-auto mt-12">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gray-400 mb-4 border border-white/5">
+                <Search size={18} />
+              </div>
+              <h3 className="text-white font-bold text-sm mb-1">No companies found</h3>
+              <p className="text-gray-500 text-xs leading-relaxed max-w-xs">
+                We couldn't find any companies matching "{search}". Try searching for another keyword or check for spelling errors.
               </p>
             </div>
           )}

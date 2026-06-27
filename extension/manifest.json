@@ -5,8 +5,7 @@
   "description": "Companion extension for LeetCode Company Tracker. Detects active problems and extracts metadata.",
   "permissions": [
     "activeTab",
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://leetcode.com/*",
@@ -29,6 +28,16 @@
         "https://*.leetcode.com/problems/*"
       ],
       "js": ["config.js", "content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "https://codeprep.com/*",
+        "https://www.codeprep.com/*"
+      ],
+      "js": ["contentCodePrep.js"],
       "run_at": "document_idle"
     }
   ],

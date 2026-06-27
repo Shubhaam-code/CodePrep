@@ -76,7 +76,7 @@ router.post('/login', async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'No account found with this email address.', code: 'EMAIL_NOT_FOUND' });
     }
 
     if (!user.passwordHash) {
@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Incorrect password. Please try again.', code: 'WRONG_PASSWORD' });
     }
 
     const token = generateToken(user._id);

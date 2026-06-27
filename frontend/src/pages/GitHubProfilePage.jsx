@@ -6,10 +6,10 @@ import { useAppSelector, useAppDispatch } from '../store/store';
 import apiClient from '../api/axios';
 import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 import Sidebar from '../components/dashboard/Sidebar';
+import { getRepoDisplayName } from '../utils/repoMapper';
 import {
   FaGithub,
   FaUser,
-  FaCodeBranch,
   FaCode,
   FaTrophy,
   FaClock,
@@ -77,8 +77,6 @@ export default function GitHubProfilePage() {
   // Base configurations
   const username = user?.githubUsername || 'Not connected';
   const profileUrl = user?.githubProfileUrl || (user?.githubUsername ? `https://github.com/${user.githubUsername}` : '#');
-  const repoName = data?.repositoryName || 'company-preparation';
-  const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
 
   const isConnected = data?.githubConnected || false;
 
@@ -167,7 +165,7 @@ export default function GitHubProfilePage() {
               {/* Detail cards */}
               {isConnected && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Sync Settings */}
+                  {/* GitHub Profile Card */}
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -175,13 +173,13 @@ export default function GitHubProfilePage() {
                     className="bg-[#0D0D12] border border-white/5 p-5 rounded-2xl shadow-lg space-y-4"
                   >
                     <h3 className="text-white font-bold text-sm flex items-center gap-2 border-b border-white/5 pb-2.5">
-                      <FaCodeBranch size={14} className="text-[#FFB800]" /> Repository Configuration
+                      <FaUser size={14} className="text-[#FFB800]" /> GitHub Profile
                     </h3>
                     <div className="space-y-3">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Repository Name</span>
+                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Username</span>
                         <p className="text-sm font-mono text-white mt-0.5">
-                          {data?.repositoryExists ? repoName : 'Not created yet'}
+                          {username}
                         </p>
                       </div>
                       <div>
@@ -195,40 +193,31 @@ export default function GitHubProfilePage() {
                           {profileUrl} <FaExternalLinkAlt size={10} className="text-gray-500" />
                         </a>
                       </div>
-                      {repoUrl && (
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Repository Link</span>
-                        <a
-                          href={repoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm text-gray-400 hover:text-white transition flex items-center gap-1.5 mt-0.5"
-                        >
-                          {repoUrl} <FaExternalLinkAlt size={10} className="text-gray-500" />
-                        </a>
-                      </div>
-                      )}
                     </div>
 
-                    <div className="pt-3 border-t border-white/5 flex gap-3">
+                    <div className="pt-3 border-t border-white/5">
+                      <div className="space-y-2 mb-3">
+                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Managed Repositories</span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {data?.availableRepositories?.length > 0 ? (
+                            data.availableRepositories.map((r) => (
+                              <span key={r} className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/8 text-gray-400">
+                                {getRepoDisplayName(r)}
+                              </span>
+                            ))
+                          ) : (
+                            <p className="text-xs text-gray-500">No repositories yet. Solve your first question to create one.</p>
+                          )}
+                        </div>
+                      </div>
                       <a
                         href={profileUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex-1 py-2 text-center text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl transition flex items-center justify-center gap-1.5"
+                        className="block w-full py-2 text-center text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl transition flex items-center justify-center gap-1.5"
                       >
-                        Open GitHub Profile
+                        <FaGithub size={13} /> Open GitHub Profile
                       </a>
-                      {repoUrl && (
-                        <a
-                          href={repoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex-1 py-2 text-center text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl transition flex items-center justify-center gap-1.5"
-                        >
-                          Open Repository
-                        </a>
-                      )}
                     </div>
                   </motion.div>
 
@@ -241,7 +230,7 @@ export default function GitHubProfilePage() {
                   >
                     <div>
                       <h3 className="text-white font-bold text-sm flex items-center gap-2 border-b border-white/5 pb-2.5">
-                        <FaCode size={14} className="text-[#FF7A00]" /> Sync Performance
+                        <FaCode size={14} className="text-[#FF7A00]" /> Sync Statistics
                       </h3>
                       <div className="grid grid-cols-2 gap-4 mt-4">
                         <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 text-center">
@@ -255,16 +244,15 @@ export default function GitHubProfilePage() {
                           <span className="text-[9px] text-gray-500">covered</span>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="pt-4 flex items-center justify-between text-xs text-gray-500">
-                      <span className="flex items-center gap-1.5">
-                        <FaClock size={11} /> Last Synced Action:
-                      </span>
-                      <strong className="text-gray-300">
-                        {data?.lastSyncAt ? timeAgo(data.lastSyncAt) : 'Not synced yet'}
-                      </strong>
-                    </div>
+                      </div>
+                      <div className="pt-2 flex items-center justify-between text-xs text-gray-500">
+                        <span className="flex items-center gap-1.5">
+                          <FaClock size={11} /> Last Sync:
+                        </span>
+                        <strong className="text-gray-300">
+                          {data?.lastSyncAt ? timeAgo(data.lastSyncAt) : 'Not synced yet'}
+                        </strong>
+                      </div>
                   </motion.div>
                 </div>
               )}

@@ -1,4 +1,12 @@
+console.log("CONTENT SCRIPT LOADED");
+console.log("runtime:", chrome.runtime);
+
+console.log("runtime id:", chrome.runtime?.id);
+
+
+console.log("sendMessage:", typeof chrome.runtime?.sendMessage);
 console.log("[CodePrep Extension] contentCodePrep.js loaded");
+
 console.log("[CodePrep Extension] Current URL:", location.href);
 document.documentElement.setAttribute("data-extension-installed", "true");
 console.log("[CodePrep Extension] Extension marker injected");
@@ -31,10 +39,19 @@ console.log("[CodePrep Extension] Extension marker injected");
   }, 5000);
 
   // Handshake listener: listen for CODEPREP_PING and reply with CODEPREP_PONG
+  // PING is routed through the background service worker so we can confirm
+  // that both the content script AND the background worker are alive.
   window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
     if (event.data && event.data.type === 'CODEPREP_PING') {
-      window.postMessage({ type: 'CODEPREP_PONG' }, '*');
+      chrome.runtime.sendMessage({ action: "pingExtension" }, (response) => {
+        if (response && response.installed) {
+          window.postMessage({
+            type: 'CODEPREP_PONG',
+            installed: true,
+            version: response.version
+          }, '*');
+        }
+      });
     }
   });
 

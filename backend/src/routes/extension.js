@@ -106,14 +106,16 @@ router.post('/sync', authMiddleware, async (req, res) => {
       });
     }
 
-    // Verify it belongs to at least one CompanyQuestion mapping
-    const isCompanyMapped = await CompanyQuestion.exists({ questionId: question._id });
-    if (!isCompanyMapped) {
-      console.warn(`⚠️ Rejecting sync: Question "${title}" is not mapped to any company.`);
-      return res.status(400).json({
-        success: false,
-        error: 'Question is not part of CodePrep company preparation database'
-      });
+    // Verify it belongs to at least one CompanyQuestion mapping (only for company-scoped solves)
+    if (!challenge && !pattern && !sheet) {
+      const isCompanyMapped = await CompanyQuestion.exists({ questionId: question._id });
+      if (!isCompanyMapped) {
+        console.warn(`⚠️ Rejecting sync: Question "${title}" is not mapped to any company.`);
+        return res.status(400).json({
+          success: false,
+          error: 'Question is not part of CodePrep company preparation database'
+        });
+      }
     }
 
     // 4. Find the user from authenticated request

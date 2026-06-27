@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { FaSearch as Search, FaArrowRight as ArrowRight, FaCheckCircle as CheckCircle2, FaBuilding as Building } from 'react-icons/fa';
@@ -74,9 +74,14 @@ export default function CompaniesPage() {
   }
 
   // Filter list
-  const filtered = (companies || []).filter(c =>
-    c.toLowerCase().includes(search.toLowerCase().trim())
-  );
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    if (!query) return companies || [];
+    return (companies || []).filter(c => {
+      const normalizedCompany = c.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return normalizedCompany.includes(query);
+    });
+  }, [companies, search]);
 
   return (
     <div className="min-h-screen bg-[#0B0B0F] flex">
@@ -106,8 +111,14 @@ export default function CompaniesPage() {
         {/* Content body */}
         <div className="p-6">
           {filtered.length === 0 ? (
-            <div className="text-center py-16 bg-white/[0.01] border border-dashed border-white/10 rounded-2xl text-gray-500 text-sm">
-              No companies found matching search filters.
+            <div className="text-center py-20 bg-[#0D0D12]/40 border border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center p-6 max-w-lg mx-auto mt-12">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gray-400 mb-4 border border-white/5">
+                <Search size={18} />
+              </div>
+              <h3 className="text-white font-bold text-sm mb-1">No companies found</h3>
+              <p className="text-gray-500 text-xs leading-relaxed max-w-xs">
+                We couldn't find any companies matching "{search}". Try searching for another keyword or check for spelling errors.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

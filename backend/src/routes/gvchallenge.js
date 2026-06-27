@@ -370,12 +370,9 @@ router.get('/progress', authMiddleware, async (req, res) => {
       if (day > maxSolvedDay) maxSolvedDay = day;
     }
 
-    // 3. Streak: walk backwards from today over GVChallenge.completedAt
-    //    dates. This used to fall back to user.streak.current, which is
-    //    maintained by the global submission service. That coupling
-    //    meant a Company/Pattern solve could silently bump the GV
-    //    streak. Walking only over GVChallenge.completedAt keeps the
-    //    streak scoped to GV activity.
+    // 3. Streak: walk backwards from today (or yesterday) over GVChallenge.completedAt
+    //    dates. This keeps the streak active if the user solved it yesterday
+    //    and still has today to solve today's challenge.
     let currentStreak = 0;
     const dateSet = new Set(
       completions.map((c) => {
@@ -387,10 +384,22 @@ router.get('/progress', authMiddleware, async (req, res) => {
     if (dateSet.size > 0) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const checkDate = new Date(today);
-      while (dateSet.has(checkDate.getTime())) {
-        currentStreak++;
-        checkDate.setDate(checkDate.getDate() - 1);
+      
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let checkDate = null;
+      if (dateSet.has(today.getTime())) {
+        checkDate = new Date(today);
+      } else if (dateSet.has(yesterday.getTime())) {
+        checkDate = new Date(yesterday);
+      }
+      
+      if (checkDate) {
+        while (dateSet.has(checkDate.getTime())) {
+          currentStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        }
       }
     }
 

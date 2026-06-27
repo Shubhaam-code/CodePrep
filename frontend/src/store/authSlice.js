@@ -9,7 +9,8 @@ const token = localStorage.getItem('token');
 const initialState = {
   user: null,
   token: token || null,
-  isAuthenticated: !!token,
+  isAuthenticated: false, // Never assume logged in on startup
+  isAuthLoading: !!token, // True if we need to verify a token on startup
 };
 
 const authSlice = createSlice({
@@ -21,16 +22,31 @@ const authSlice = createSlice({
       state.user = user;
       state.token = token;
       state.isAuthenticated = true;
+      state.isAuthLoading = false;
       localStorage.setItem('token', token);
     },
     logout: (state) => {
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
-      localStorage.removeItem('token');
+      state.isAuthLoading = false;
+      localStorage.clear();
+      sessionStorage.clear();
+      // Clear cookies if they exist
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
     },
     setUser: (state, action) => {
       state.user = action.payload;
+      if (action.payload) {
+        state.isAuthenticated = true;
+      } else {
+        state.isAuthenticated = false;
+      }
+      state.isAuthLoading = false;
     },
     updateBookmarks: (state, action) => {
       if (state.user) {

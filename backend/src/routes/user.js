@@ -175,8 +175,10 @@ router.get('/dashboard', async (req, res) => {
     const user = await User.findById(req.user.id)
       .populate({
         path: 'solvedQuestions.questionId',
-        model: 'Question'
-      });
+        model: 'Question',
+        select: 'title difficulty'
+      })
+      .lean();
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -191,25 +193,30 @@ router.get('/dashboard', async (req, res) => {
       .map(sq => ({
         title: sq.questionId ? sq.questionId.title : `Question #${sq.questionId}`,
         difficulty: sq.questionId ? sq.questionId.difficulty : 'Easy',
-        solvedAt: sq.solvedAt ? sq.solvedAt.toISOString() : new Date().toISOString()
+        solvedAt: sq.solvedAt ? new Date(sq.solvedAt).toISOString() : new Date().toISOString()
       }));
 
-    const allCompanyQuestions = await CompanyQuestion.find();
+    // Optimize: fetch only 'alltime' and select minimal fields, using lean()
+    const allCompanyQuestions = await CompanyQuestion.find({ timeframe: 'alltime' })
+      .select('company questionId')
+      .lean();
     
     const companyTotals = {};
-    allCompanyQuestions.forEach(cq => {
-      if (cq.timeframe === 'alltime') {
-        companyTotals[cq.company] = (companyTotals[cq.company] || 0) + 1;
-      }
-    });
-
-    const solvedQuestionIds = user.solvedQuestions.map(sq => 
-      sq.questionId ? sq.questionId._id.toString() : sq.questionId.toString()
-    );
     const companySolved = {};
+    
+    const solvedQuestionSet = new Set(
+      user.solvedQuestions.map(sq => 
+        sq.questionId ? sq.questionId._id.toString() : sq.questionId.toString()
+      )
+    );
+
     allCompanyQuestions.forEach(cq => {
-      if (cq.timeframe === 'alltime' && solvedQuestionIds.includes(cq.questionId.toString())) {
-        companySolved[cq.company] = (companySolved[cq.company] || 0) + 1;
+      if (cq.questionId) {
+        const qIdStr = cq.questionId.toString();
+        companyTotals[cq.company] = (companyTotals[cq.company] || 0) + 1;
+        if (solvedQuestionSet.has(qIdStr)) {
+          companySolved[cq.company] = (companySolved[cq.company] || 0) + 1;
+        }
       }
     });
 

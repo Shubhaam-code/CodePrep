@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaGithub, FaLinkedin } from 'react-icons/fa';
+import { FaGithub } from 'react-icons/fa';
 
 /* ── Footer link columns ── */
 const columns = [
@@ -33,7 +33,6 @@ const columns = [
 
 const socials = [
   { Icon: FaGithub,   label: 'GitHub',   href: '#' },
-  { Icon: FaLinkedin, label: 'LinkedIn', href: '#' },
 ];
 
 export default function Footer() {

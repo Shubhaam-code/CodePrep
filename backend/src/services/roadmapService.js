@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 const Question = require('../models/Question');
 const Submission = require('../models/Submission');
 
@@ -141,12 +142,12 @@ exports.listRoadmapPatterns = async (userId) => {
 
   // Phase 5.4 — one round-trip to fetch this user's solved Set.
   const solvedSet = await fetchSolvedQuestionIds(userId);
-  const solvedIdStrings = Array.from(solvedSet);
+  const solvedIdObjects = Array.from(solvedSet).map(id => new mongoose.Types.ObjectId(id));
 
   // Single aggregate over Question collection that returns both
   // totals and per-user solved counts. Avoids the previous two-step
   // (count + per-pattern subquery) that would have been O(patterns).
-  const stats = await aggregatePatternStatsWithSolved(userId, solvedIdStrings);
+  const stats = await aggregatePatternStatsWithSolved(userId, solvedIdObjects);
 
   const statsByPattern = new Map();
   for (const row of stats) {

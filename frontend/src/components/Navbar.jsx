@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FaBars as Menu, FaTimes as X, FaArrowRight as LogOut, FaArrowRight as ChevronRight, FaCircle as LayoutDashboard, FaGithub, FaLinkedin } from 'react-icons/fa';
+import { FaBars as Menu, FaTimes as X, FaArrowRight as LogOut, FaArrowRight as ChevronRight, FaCircle as LayoutDashboard, FaGithub } from 'react-icons/fa';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { logout } from '../store/authSlice';
@@ -25,9 +25,6 @@ export default function Navbar() {
   const handleSocialClick = (provider) => {
     if (provider === 'github') {
       const url = user?.githubUrl || user?.githubProfileUrl || 'https://github.com';
-      window.open(url, '_blank');
-    } else if (provider === 'linkedin') {
-      const url = user?.linkedinUrl || user?.linkedinProfileUrl || 'https://linkedin.com';
       window.open(url, '_blank');
     }
   };
@@ -143,17 +140,6 @@ export default function Navbar() {
                   )}
                 </button>
 
-                {/* LinkedIn */}
-                <button
-                  onClick={() => handleSocialClick('linkedin')}
-                  title={user?.linkedinConnected ? "Open LinkedIn Profile" : "Connect LinkedIn"}
-                  className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200"
-                >
-                  <FaLinkedin size={17} className={user?.linkedinConnected ? "text-[#0077B5]" : ""} />
-                  {user?.linkedinConnected && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
-                  )}
-                </button>
               </div>
 
               {isAuthenticated ? (
@@ -286,18 +272,6 @@ export default function Navbar() {
                       )}
                     </button>
 
-                    {/* LinkedIn */}
-                    <button
-                      onClick={() => handleSocialClick('linkedin')}
-                      title={user?.linkedinConnected ? "Open LinkedIn Profile" : "Connect LinkedIn"}
-                      className="relative p-2 text-gray-400 hover:text-white bg-white/4 hover:bg-white/8 border border-white/8 rounded-xl transition duration-200 flex items-center gap-1.5"
-                    >
-                      <FaLinkedin size={16} className={user?.linkedinConnected ? "text-[#0077B5]" : ""} />
-                      <span className="text-xs">{user?.linkedinConnected ? "LinkedIn" : "Connect"}</span>
-                      {user?.linkedinConnected && (
-                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-[#0B0B0F]" />
-                      )}
-                    </button>
                   </div>
                 </div>
 

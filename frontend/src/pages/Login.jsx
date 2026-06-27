@@ -50,7 +50,15 @@ function Login() {
     },
     onError: (err) => {
       console.error('[Login Page] Traditional login error:', err);
-      setErrorMsg(err.response?.data?.message || 'Login failed. Please verify credentials.');
+      if (!err.response) {
+        setErrorMsg('Unable to connect to the server. Please check your internet connection and try again.');
+      } else if (err.response.status === 429) {
+        setErrorMsg('Too many failed login attempts. Please try again later.');
+      } else if (err.response.status >= 500) {
+        setErrorMsg('Unable to connect to the server. Please check your internet connection and try again.');
+      } else {
+        setErrorMsg(err.response?.data?.message || 'Login failed. Please verify credentials.');
+      }
     },
   });
 
@@ -76,12 +84,25 @@ function Login() {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!email || !password) {
-      setErrorMsg('Please enter email and password');
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setErrorMsg('Please enter your email address.');
       return;
     }
 
-    loginMutation.mutate({ email, password });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password) {
+      setErrorMsg('Please enter your password.');
+      return;
+    }
+
+    loginMutation.mutate({ email: trimmedEmail, password });
   };
 
   const handleGoogleLogin = async () => {

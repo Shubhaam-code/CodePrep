@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from './store/store';
-import { setUser } from './store/authSlice';
+import { setUser, logout } from './store/authSlice';
 import apiClient from './api/axios';
 
 import Home from './pages/Home';
@@ -64,6 +64,27 @@ export default function App() {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
+  const isAuthLoading = useAppSelector((s) => s.auth.isAuthLoading);
+  const token = useAppSelector((s) => s.auth.token);
+
+  // Verify authentication token on startup
+  useEffect(() => {
+    const verifyToken = async () => {
+      if (!token) return;
+      try {
+        const response = await apiClient.get('/api/auth/me');
+        if (response.data) {
+          dispatch(setUser(response.data));
+        } else {
+          dispatch(logout());
+        }
+      } catch (err) {
+        console.error('[App] Initial authentication verification failed:', err);
+        dispatch(logout());
+      }
+    };
+    verifyToken();
+  }, [token, dispatch]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Extension-sync bridge (registered once at the application root)
@@ -98,12 +119,10 @@ export default function App() {
           dispatch(setUser(profileRes.data));
         }
         // Page-local query caches also need to refresh so derived
-        // stats (GV progress, GitHub stats, dashboard summary) update.
-        // Note: GVChallenge reads exclusively from ['gv-progress'],
-        // not from Redux — this invalidation is what advances its day.
+        // stats (GV progress, roadmap progress, dashboard summary) update.
         queryClient.invalidateQueries({ queryKey: ['gv-progress'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-        queryClient.invalidateQueries({ queryKey: ['githubStats'] });
+        queryClient.invalidateQueries({ queryKey: ['roadmap'] });
       } catch (err) {
         console.error('[App] Failed to refresh user after extension sync:', err);
       }
@@ -115,6 +134,21 @@ export default function App() {
       channel.close();
     };
   }, [dispatch, isAuthenticated, queryClient]);
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-[#0B0B0F] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-black font-extrabold text-lg shadow-lg shadow-[#FF7A00]/20 animate-pulse">
+            CP
+          </div>
+          <span className="text-gray-400 text-sm font-semibold tracking-wider animate-pulse">
+            Verifying session...
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0B0B0F] text-white font-sans">

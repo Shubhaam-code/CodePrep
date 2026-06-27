@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
@@ -30,75 +30,125 @@ export default function Onboarding() {
   const queryClient = useQueryClient();
   const { user } = useAppSelector((s) => s.auth);
 
-  const [step, setStep] = useState(1);
-  const [extensionConnected, setExtensionConnected] = useState(false);
+  const savedStep = sessionStorage.getItem('onboarding_step');
+  const [step, setStepState] = useState(savedStep ? Number(savedStep) : 1);
+  const stepRef = useRef(savedStep ? Number(savedStep) : 1);
+  
+  const setStep = (val) => {
+    if (typeof val === 'function') {
+      setStepState((prev) => {
+        const next = val(prev);
+        stepRef.current = next;
+        sessionStorage.setItem('onboarding_step', next);
+        return next;
+      });
+    } else {
+      stepRef.current = val;
+      setStepState(val);
+      sessionStorage.setItem('onboarding_step', val);
+    }
+  };
+
+  const [detectionState, setDetectionStateState] = useState('idle');
+  const detectionStateRef = useRef('idle');
+  const setDetectionState = (val) => {
+    detectionStateRef.current = val;
+    setDetectionStateState(val);
+  };
+
+  const extensionConnected = detectionState === 'success';
+
   const [isCompleting, setIsCompleting] = useState(false);
   const [isConnectingGithub, setIsConnectingGithub] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isCheckingExtension, setIsCheckingExtension] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [downloadError, setDownloadError] = useState('');
-  const [detectionKey, setDetectionKey] = useState(0);
 
-  // 1. Extension Handshake: Poll every 2 seconds for presence of companion extension.
-  //    Re-runs when extensionConnected or detectionKey changes (detectionKey allows
-  //    handleRetryDetection to force a completely fresh handshake cycle).
+  // Refs for timers
+  const checkingInstallTimerRef = useRef(null);
+  const pingBurstTimersRef = useRef([]);
+
+  const clearDetectionTimers = () => {
+    if (checkingInstallTimerRef.current) {
+      clearTimeout(checkingInstallTimerRef.current);
+      checkingInstallTimerRef.current = null;
+    }
+    if (pingBurstTimersRef.current && pingBurstTimersRef.current.length > 0) {
+      pingBurstTimersRef.current.forEach((t) => clearTimeout(t));
+      pingBurstTimersRef.current = [];
+    }
+  };
+
+  // ── Extension Handshake (listener) ──────────────────────────────────
+  //    Registered once on mount, removed on unmount.
   useEffect(() => {
-    let handshakeInterval;
-    let cancelled = false;
-
     const handlePongMessage = (event) => {
       if (event.source !== window) return;
       if (event.data?.type === 'CODEPREP_PONG') {
+        if (detectionStateRef.current === 'success') return; // Prevent duplicate transitions
         console.log('[Onboarding] Companion Extension PONG received.');
-        cancelled = true;
-        setExtensionConnected(true);
+        setDetectionState('success');
+        setErrorMsg('');
+        setDownloadError('');
+        clearDetectionTimers();
       }
     };
 
     window.addEventListener('message', handlePongMessage);
+    return () => {
+      window.removeEventListener('message', handlePongMessage);
+      clearDetectionTimers();
+    };
+  }, []);
 
-    // Send an immediate burst of pings to ensure the extension catches one
-    for (let i = 0; i < 5; i++) {
-      setTimeout(() => {
-        if (!cancelled) window.postMessage({ type: 'CODEPREP_PING' }, '*');
-      }, i * 200);
-    }
+  // ── Initial Mount / Post-Reload Check ───────────────────────────────
+  //    Checks sessionStorage for pending reload flags, or does a quick background ping.
+  useEffect(() => {
+    const isReloadCheck = sessionStorage.getItem('pending_extension_reload') === 'true';
+    
+    if (isReloadCheck) {
+      sessionStorage.removeItem('pending_extension_reload');
+      
+      // Ensure we are on Step 3 for check
+      setStep(3);
+      setDetectionState('checking');
+      setErrorMsg('');
 
-    // Polling ping
-    handshakeInterval = setInterval(() => {
-      if (!cancelled) {
-        console.log('[Onboarding] Pinging Companion Extension...');
+      const sendPing = () => {
+        if (detectionStateRef.current === 'success') return;
+        window.postMessage({ type: 'CODEPREP_PING' }, '*');
+      };
+
+      // Burst of pings
+      sendPing();
+      for (let i = 1; i < 5; i++) {
+        const t = setTimeout(sendPing, i * 200);
+        pingBurstTimersRef.current.push(t);
+      }
+
+      // Timeout check: strict 5-second timeout
+      checkingInstallTimerRef.current = setTimeout(() => {
+        setDetectionState('failure');
+        setErrorMsg("Extension not detected. Please make sure the extension is installed and enabled.");
+        clearDetectionTimers();
+      }, 5000);
+    } else {
+      // Quiet background check in case already installed
+      if (step === 3 && detectionStateRef.current !== 'success' && detectionStateRef.current !== 'checking') {
         window.postMessage({ type: 'CODEPREP_PING' }, '*');
       }
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener('message', handlePongMessage);
-      clearInterval(handshakeInterval);
-    };
-  }, [extensionConnected, detectionKey]);
-
-  // When entering Step 3 or when detectionKey increments (from retry), start checking
-  useEffect(() => {
-    if (step === 3) {
-      setIsCheckingExtension(true);
-      const timer = setTimeout(() => {
-        setIsCheckingExtension(false);
-      }, 5000);
-      return () => clearTimeout(timer);
     }
-  }, [step, detectionKey]);
+  }, []);
 
-  // When extension connects during checking, stop checking state
+  // ── Step Transition check ──────────────────────────────────────────
+  //    Triggers quiet detection when user reaches Step 3.
   useEffect(() => {
-    if (extensionConnected) {
-      setIsCheckingExtension(false);
+    if (step === 3 && detectionStateRef.current !== 'success' && detectionStateRef.current !== 'checking') {
+      window.postMessage({ type: 'CODEPREP_PING' }, '*');
     }
-  }, [extensionConnected]);
+  }, [step]);
 
   const handleConnectGitHub = () => {
     setErrorMsg('');
@@ -124,13 +174,20 @@ export default function Onboarding() {
   const handleSkip = () => {
     console.log('[Onboarding] User chose to skip onboarding process.');
     sessionStorage.setItem('onboarding_skipped', 'true');
+    sessionStorage.removeItem('onboarding_step');
     navigate('/dashboard');
   };
 
   const handleRetryDetection = () => {
-    setExtensionConnected(false);
-    setIsCheckingExtension(true);
-    setDetectionKey(k => k + 1);
+    if (detectionStateRef.current === 'checking') return; // Prevent duplicate checks
+    sessionStorage.setItem('pending_extension_reload', 'true');
+    window.location.reload();
+  };
+
+  const handleInstalledClick = () => {
+    if (detectionStateRef.current === 'checking') return; // Prevent duplicate checks
+    sessionStorage.setItem('pending_extension_reload', 'true');
+    window.location.reload();
   };
 
   const faqItems = [
@@ -170,6 +227,7 @@ export default function Onboarding() {
       const response = await apiClient.post('/api/auth/onboarding/complete');
       if (response.data?.success) {
         console.log('[Onboarding] Onboarding completion response success. Dispatching updated user profile.');
+        sessionStorage.removeItem('onboarding_step');
         dispatch(setUser(response.data.user));
         navigate('/dashboard');
       } else {
@@ -186,6 +244,13 @@ export default function Onboarding() {
   const githubConnected = user?.githubConnected || false;
   const githubProfileUrl = user?.githubProfileUrl || (user?.githubUsername ? `https://github.com/${user.githubUsername}` : '');
 
+  // ── Unmount cleanup: clear any pending timers ──────────────────────
+  useEffect(() => {
+    return () => {
+      clearDetectionTimers();
+    };
+  }, []);
+
   // Stepper state configurations
   const stepsConfig = [
     { title: 'Welcome', number: 1 },
@@ -201,17 +266,11 @@ export default function Onboarding() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#FFB800]/2.5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Top Header */}
-      <div className="w-full max-w-2xl flex items-center justify-between mb-8 z-10">
+      <div className="w-full max-w-2xl flex items-center mb-8 z-10">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-black font-extrabold text-sm shadow-md shadow-[#FF7A00]/20">CP</div>
           <span className="text-white font-extrabold text-lg tracking-wider">CodePrep</span>
         </div>
-        <button
-          onClick={handleSkip}
-          className="cursor-pointer text-xs font-bold text-gray-500 hover:text-gray-300 transition px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.02]"
-        >
-          Skip For Now
-        </button>
       </div>
 
       {/* Onboarding Wizard Card */}
@@ -283,28 +342,28 @@ export default function Onboarding() {
               >
                 <div className="space-y-2">
                   <h2 className="text-2xl font-extrabold text-white flex items-center gap-2">
-                    Welcome to CodePrep! <span className="animate-pulse">⚡</span>
+                    Welcome to CodePrep!
                   </h2>
                   <p className="text-gray-400 text-sm">
-                    CodePrep helps you structure company-wise interview practice and build a stunning GitHub portfolio automatically. Let's configure your workspace in a few simple steps.
+                    Your all-in-one coding workspace. Practice company interview questions, learn DSA through structured pattern roadmaps, and complete the G. Viswanathan Challenge. Accepted solutions are automatically organized into GitHub repositories — building a clean portfolio without manual work.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                   <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
-                    <div className="text-xl">🎯</div>
-                    <h3 className="text-white font-bold text-xs">Targeted Preparation</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Filter questions by target tech company and match real exam frequencies.</p>
+                    <div className="text-xl">📚</div>
+                    <h3 className="text-white font-bold text-xs">Structured Learning</h3>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">Practice Company questions, DSA Pattern Roadmaps, and the GV Challenge — all in one place.</p>
                   </div>
                   <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
                     <div className="text-xl">📂</div>
-                    <h3 className="text-white font-bold text-xs">Portfolio Sync</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Save submissions and push structured folders automatically to your GitHub.</p>
+                    <h3 className="text-white font-bold text-xs">GitHub Portfolio</h3>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">Accepted solutions are automatically organized into dedicated repositories. Build a clean portfolio effortlessly.</p>
                   </div>
                   <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
-                    <div className="text-xl">🔄</div>
-                    <h3 className="text-white font-bold text-xs">Auto LeetCode Sync</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Write code on LeetCode; companion extension syncs detail in the background.</p>
+                    <div className="text-xl">⚡</div>
+                    <h3 className="text-white font-bold text-xs">Companion Extension</h3>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">Detects accepted LeetCode submissions and syncs them in the background. No manual exports needed.</p>
                   </div>
                 </div>
 
@@ -476,7 +535,7 @@ export default function Onboarding() {
                   <div className="space-y-6">
                     {/* ── Extension Connection Card ── */}
                     {extensionConnected ? (
-                      /* State C: Connected */
+                      /* Connected */
                       <motion.div
                         initial={{ scale: 0.92, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
@@ -495,18 +554,8 @@ export default function Onboarding() {
                           You're ready to automatically sync your accepted LeetCode solutions.
                         </p>
                       </motion.div>
-                    ) : isCheckingExtension ? (
-                      /* State B: Checking */
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="bg-[#0B0B0F] border border-white/5 p-6 rounded-2xl text-center space-y-3"
-                      >
-                        <FaSpinner className="animate-spin text-[#FF7A00] mx-auto" size={24} />
-                        <p className="text-gray-400 text-sm">Looking for Companion Extension...</p>
-                      </motion.div>
                     ) : (
-                      /* State A: Not installed */
+                      /* Not installed */
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -536,12 +585,21 @@ export default function Onboarding() {
                           </button>
                         </div>
 
-                        <div className="text-center pt-1">
+                        <div className="flex justify-center">
                           <button
-                            onClick={handleRetryDetection}
-                            className="cursor-pointer text-[10px] font-bold text-gray-400 hover:text-white flex items-center justify-center gap-1.5 transition"
+                            onClick={handleInstalledClick}
+                            disabled={detectionState === 'checking' || detectionState === 'success'}
+                            className={`cursor-pointer px-6 py-3 font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 transition w-full sm:w-auto ${
+                              detectionState === 'success'
+                                ? 'bg-green-500/10 text-green-400 border border-green-500/20 shadow-none cursor-default'
+                                : 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 disabled:opacity-60 disabled:cursor-wait text-black shadow-lg shadow-[#FF7A00]/10'
+                            }`}
                           >
-                            <FaRedo size={10} /> Retry Detection
+                            {detectionState === 'checking' && (
+                              <><FaSpinner className="animate-spin" size={14} /> Checking...</>
+                            )}
+                            {(detectionState === 'idle' || detectionState === 'failure') && <>Check Extension</>}
+                            {detectionState === 'success' && <><FaCheckCircle size={14} /> Extension Connected ✓</>}
                           </button>
                         </div>
                       </motion.div>

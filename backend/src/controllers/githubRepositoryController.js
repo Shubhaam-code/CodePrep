@@ -416,7 +416,18 @@ exports.getStats = async (req, res) => {
         console.error('Error checking GitHub repository in stats:', classified.message);
       }
     }
-    const availableRepositories = Object.values(REPOS);
+    // Derive available repositories from solved questions instead of
+    // returning all known repos. A repository should only appear after
+    // the user has solved at least one question that maps to it.
+    const repoSet = new Set();
+    for (const sq of user.solvedQuestions || []) {
+      const result = resolveRepoForContext({ syncContext: sq.syncContext });
+      if (result && result.repo) {
+        repoSet.add(result.repo);
+      }
+    }
+    // Stable ordering: preserve the canonical REPOS order
+    const availableRepositories = Object.values(REPOS).filter(r => repoSet.has(r));
 
     // Retrieve all submissions for the logged-in user
     const submissions = await Submission.find({ userId })

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FaCheckCircle as CheckCircle, FaShare as Share2, FaExternalLinkAlt as ExternalLink, FaTimes as X,
-  FaSpinner as Loader2, FaCopy as Copy, FaCheck as Check , FaFire as Flame
+  FaCheckCircle as CheckCircle, FaExternalLinkAlt as ExternalLink, FaFire as Flame
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +11,6 @@ import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';
 
 const SIDEBAR_W = 224;
-const LANGUAGES = ['Python', 'JavaScript', 'Java', 'C++', 'Other'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function timeAgo(date) {
@@ -92,19 +90,7 @@ export default function GVChallenge() {
   const { user } = useAppSelector((s) => s.auth);
   const queryClient = useQueryClient();
 
-  const [screen, setScreen] = useState('home'); // 'home' | 'preview' | 'success'
-  const [showSolutionForm, setShowSolutionForm] = useState(false);
-  const [solution, setSolution] = useState('');
-  const [language, setLanguage] = useState('Python');
-  const [generatedPost, setGeneratedPost] = useState('');
-  const [originalPost, setOriginalPost] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showMarkDone, setShowMarkDone] = useState(false);
   const [toast, setToast] = useState('');
-  const [showLeetHubBanner, setShowLeetHubBanner] = useState(
-    localStorage.getItem('leethubSetup') !== 'done'
-  );
-  const [copiedPost, setCopiedPost] = useState(false);
 
   // Fetch questions
   const { data: questionsData, isLoading: loadingQ } = useQuery({
@@ -127,7 +113,7 @@ export default function GVChallenge() {
   });
 
   const questions = questionsData || [];
-  const prog = progress || { totalCompleted: 0, currentStreak: 0, linkedinPosted: 0, completedDays: [] };
+  const prog = progress || { totalCompleted: 0, currentStreak: 0, completedDays: [] };
 
   const currentDay = prog.totalCompleted + 1;
   const currentQuestion = questions[currentDay - 1] || null;
@@ -153,95 +139,8 @@ export default function GVChallenge() {
     ? completedDayNums.has(currentQuestion.dayNumber)
     : false;
 
-  // ── Generate post ──────────────────────────────────────────────────────────
-  const handleGeneratePost = async () => {
-    if (!solution.trim() || !currentQuestion) return;
-    setIsGenerating(true);
-    try {
-      const res = await apiClient.post('/api/gvchallenge/generate-post', {
-        dayNumber: currentDay,
-        questionTitle: currentQuestion.title,
-        difficulty: currentQuestion.difficulty,
-        topic: currentQuestion.topic,
-        solution,
-        language,
-      });
-      setGeneratedPost(res.data.post);
-      setOriginalPost(res.data.post);
-      setScreen('preview');
-    } catch (err) {
-      setToast('❌ Failed to generate post. Try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ── Regenerate ─────────────────────────────────────────────────────────────
-  const handleRegenerate = async () => {
-    if (!solution.trim() || !currentQuestion) return;
-    setIsGenerating(true);
-    try {
-      const res = await apiClient.post('/api/gvchallenge/generate-post', {
-        dayNumber: currentDay,
-        questionTitle: currentQuestion.title,
-        difficulty: currentQuestion.difficulty,
-        topic: currentQuestion.topic,
-        solution,
-        language,
-      });
-      setGeneratedPost(res.data.post);
-      setOriginalPost(res.data.post);
-    } catch {
-      setToast('❌ Regeneration failed.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ── Copy ───────────────────────────────────────────────────────────────────
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(generatedPost);
-    setCopiedPost(true);
-    setToast('✅ Copied to clipboard!');
-    setTimeout(() => setCopiedPost(false), 2000);
-  };
-
-  // ── Open LinkedIn ──────────────────────────────────────────────────────────
-  const handleOpenLinkedIn = async () => {
-    await navigator.clipboard.writeText(generatedPost);
-    window.open('https://www.linkedin.com/feed/', '_blank');
-    setToast('📋 Post copied! Paste on LinkedIn (Ctrl+V)');
-    setShowMarkDone(true);
-  };
-
-  // ── Mark Complete ──────────────────────────────────────────────────────────
-  const handleMarkComplete = async (posted = true) => {
-    if (!currentQuestion) return;
-    try {
-      await apiClient.post('/api/gvchallenge/mark-complete', {
-        dayNumber: currentDay,
-        questionTitle: currentQuestion.title,
-        questionUrl: getLeetCodeUrl(currentQuestion),
-        solution,
-        language,
-        topic: currentQuestion.topic,
-        difficulty: currentQuestion.difficulty,
-        linkedinPosted: posted,
-      });
-      await refetchProgress();
-      setScreen('success');
-    } catch {
-      setToast('❌ Failed to mark complete.');
-    }
-  };
-
   // ── Already Solved Before ─────────────────────────────────────────────────
   // For users who solved the current GV question BEFORE joining CodePrep.
-  // The backend writes a row to the GVChallenge collection (the single
-  // source of truth for GV progression). We then invalidate
-  // ['gv-progress'] so useQuery refetches → completedDayNums grows →
-  // currentDay advances → Day N+1 becomes Today's Question.
-  // No GitHub push, no Submission, no Extension sync, no README update.
   const [alreadySolvedBusy, setAlreadySolvedBusy] = useState(false);
   const handleAlreadySolved = async () => {
     if (!currentQuestion) return;
@@ -252,11 +151,6 @@ export default function GVChallenge() {
         dayNumber: currentDay,
         questionTitle: currentQuestion.title,
       });
-      // The setUser dispatch is NOT used by this page anymore (GV
-      // Challenge now reads exclusively from /api/gvchallenge/progress).
-      // We still call it so other surfaces that watch Redux see the
-      // updated user, but the actual page advancement below comes from
-      // invalidating ['gv-progress'].
       try {
         const profileRes = await apiClient.get('/api/auth/me');
         if (profileRes?.data) dispatch(setUser(profileRes.data));
@@ -273,216 +167,6 @@ export default function GVChallenge() {
       setAlreadySolvedBusy(false);
     }
   };
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  SCREEN: preview
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (screen === 'preview') {
-    const charCount = generatedPost.length;
-    const charOver = charCount > 1300;
-
-    return (
-      <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)' }}>
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto pb-10" style={{ marginLeft: SIDEBAR_W }}>
-          <AnimatePresence>
-            {toast && <Toast message={toast} onDone={() => setToast('')} />}
-          </AnimatePresence>
-
-          <motion.div
-            initial={{ opacity: 0, x: 80 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.25 }}
-            className="max-w-2xl mx-auto px-6 py-10"
-          >
-            {/* Back */}
-            <button
-              onClick={() => setScreen('home')}
-              className="cursor-pointer text-sm mb-6 flex items-center gap-1 hover:opacity-80 transition-opacity"
-              style={{ color: 'var(--text-2)' }}
-            >
-              ← Back
-            </button>
-
-            <h1 className="font-bold text-xl mb-5" style={{ color: 'var(--text-1)' }}>
-              LinkedIn Post Preview
-            </h1>
-
-            {/* LinkedIn card */}
-            <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-              {/* Header */}
-              <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                  style={{ background: 'var(--orange)' }}
-                >
-                  {(user?.name || 'U')[0].toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>{user?.name || 'You'}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>• 1st &nbsp;·&nbsp; Just now</p>
-                </div>
-              </div>
-
-              {/* Editable content */}
-              <div className="px-4 py-4">
-                <textarea
-                  value={generatedPost}
-                  onChange={(e) => setGeneratedPost(e.target.value)}
-                  rows={12}
-                  className="w-full bg-transparent border-none outline-none resize-y text-sm leading-relaxed"
-                  style={{ color: 'var(--text-1)', fontFamily: 'Inter, sans-serif' }}
-                />
-                <p className={`text-xs text-right mt-2 ${charOver ? 'text-red-400' : 'text-green-400'}`}>
-                  {charCount}/1300
-                </p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="mt-6 space-y-3">
-              <div className="flex gap-3">
-                <button
-                  onClick={handleRegenerate}
-                  disabled={isGenerating}
-                  className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                >
-                  {isGenerating ? <Loader2 size={14} className="animate-spin" /> : '🔄'} Regenerate
-                </button>
-                <button
-                  onClick={() => setGeneratedPost(originalPost)}
-                  className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                >
-                  ↩ Reset
-                </button>
-              </div>
-
-              <button
-                onClick={handleCopy}
-                className="cursor-pointer w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all"
-                style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-              >
-                {copiedPost ? <Check size={15} className="text-green-400" /> : <Copy size={15} />}
-                {copiedPost ? 'Copied!' : '📋 Copy Post'}
-              </button>
-
-              <button
-                onClick={handleOpenLinkedIn}
-                className="cursor-pointer w-full py-3 rounded-xl font-semibold text-sm text-black flex items-center justify-center gap-2 transition-all hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
-              >
-                🔗 Open LinkedIn & Post →
-              </button>
-            </div>
-
-            {/* Mark Done section */}
-            <AnimatePresence>
-              {showMarkDone && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="mt-4 rounded-xl p-5 text-center"
-                  style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
-                >
-                  <p className="font-semibold mb-3" style={{ color: 'var(--text-1)' }}>
-                    Did you post on LinkedIn? 🎉
-                  </p>
-                  <button
-                    onClick={() => handleMarkComplete(true)}
-                    className="cursor-pointer w-full px-8 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:opacity-90"
-                    style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)' }}
-                  >
-                    ✅ Yes, I Posted!
-                  </button>
-                  <button
-                    onClick={() => handleMarkComplete(false)}
-                    className="cursor-pointer mt-2 text-xs underline transition-opacity hover:opacity-70"
-                    style={{ color: 'var(--text-3)' }}
-                  >
-                    Skip (I'll post later)
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        </main>
-      </div>
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  //  SCREEN: success
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (screen === 'success') {
-    return (
-      <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)' }}>
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto flex items-center justify-center pb-10" style={{ marginLeft: SIDEBAR_W }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
-            className="text-center py-16 px-6 max-w-md"
-          >
-            <div className="text-8xl mb-4">🎉</div>
-            <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text-1)' }}>
-              Day {currentDay - 1} Complete!
-            </h1>
-            <p className="text-sm mb-8" style={{ color: 'var(--text-2)' }}>
-              Keep the momentum going!
-            </p>
-
-            {/* Checklist */}
-            <div className="inline-block text-left mb-6">
-              {['LeetCode Solved', 'GitHub Pushed via LeetHub', 'LinkedIn Post Generated'].map((item) => (
-                <div key={item} className="flex items-center gap-3 mb-3">
-                  <CheckCircle size={20} className="text-green-400 shrink-0" />
-                  <span className="text-sm" style={{ color: 'var(--text-1)' }}>{item}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Streak card */}
-            <div
-              className="mx-auto max-w-xs rounded-xl p-5 text-center mb-8"
-              style={{
-                background: 'var(--orange-dim)',
-                border: '1px solid rgba(249,115,22,0.3)',
-              }}
-            >
-              <p className="text-2xl font-bold" style={{ color: 'var(--orange)' }}>
-                🔥 {Math.max(prog.currentStreak, 1)} Day Streak!
-              </p>
-              <p className="text-sm mt-1" style={{ color: 'var(--text-2)' }}>
-                Keep the momentum going!
-              </p>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-3 justify-center flex-wrap">
-              <button
-                onClick={() => { setScreen('home'); refetchProgress(); }}
-                className="cursor-pointer px-6 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
-                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-              >
-                View All Questions →
-              </button>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="cursor-pointer px-6 py-2.5 rounded-xl text-sm font-semibold text-black transition-all hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
-              >
-                Go to Dashboard
-              </button>
-            </div>
-          </motion.div>
-        </main>
-      </div>
-    );
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SCREEN: home
@@ -511,80 +195,18 @@ export default function GVChallenge() {
             🏆 G. Viswanathan Challenge
           </span>
           <h1 className="text-3xl font-bold mt-1" style={{ color: 'var(--text-1)' }}>
-            Code. Push. Post. Repeat.
+            Solve & Track. Daily.
           </h1>
           <p className="text-sm mt-2 max-w-md mx-auto" style={{ color: 'var(--text-2)' }}>
-            Solve daily DSA questions, push to GitHub with LeetHub, share on LinkedIn
+            Solve one DSA question daily and track your progress.
           </p>
         </div>
 
-        {/* LEETHUB BANNER */}
-        <AnimatePresence>
-          {showLeetHubBanner && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mx-6 mb-4 rounded-xl px-5 py-4"
-              style={{
-                background: 'var(--orange-dim)',
-                border: '1px solid rgba(249,115,22,0.3)',
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-sm" style={{ color: 'var(--orange)' }}>
-                  ⚡ Quick Setup Required
-                </span>
-                <button
-                  onClick={() => {
-                    localStorage.setItem('leethubSetup', 'done');
-                    setShowLeetHubBanner(false);
-                  }}
-                  className="cursor-pointer transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--text-3)' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="mt-3 text-sm space-y-1" style={{ color: 'var(--text-2)' }}>
-                <p>
-                  <span className="font-semibold">1.</span>{' '}
-                  <a
-                    href="https://chrome.google.com/webstore/detail/leethub-v2/mhanfgfagplhgemhjfeolkkdidbakocm"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                    style={{ color: 'var(--orange)' }}
-                  >
-                    Install LeetHub Extension →
-                  </a>
-                </p>
-                <p><span className="font-semibold">2.</span> Connect LeetHub to your GitHub account</p>
-                <p><span className="font-semibold">3.</span> Start solving — GitHub push is automatic!</p>
-              </div>
-              <label className="flex items-center gap-2 mt-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-orange-500"
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      localStorage.setItem('leethubSetup', 'done');
-                      setShowLeetHubBanner(false);
-                    }
-                  }}
-                />
-                <span className="text-sm" style={{ color: 'var(--text-2)' }}>I've set up LeetHub ✓</span>
-              </label>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* STATS ROW */}
-        <div className="grid grid-cols-3 gap-4 mx-6 mb-6">
+        <div className="grid grid-cols-2 gap-4 mx-6 mb-6">
           {[
             { label: 'Days Completed', value: prog.totalCompleted, icon: <CheckCircle size={18} className="text-green-400" /> },
             { label: 'Current Streak 🔥', value: prog.currentStreak, icon: <Flame size={18} style={{ color: 'var(--orange)' }} /> },
-            { label: 'LinkedIn Posts', value: prog.linkedinPosted, icon: <Share2 size={18} className="text-blue-400" /> },
           ].map(({ label, value, icon }) => (
             <div
               key={label}
@@ -684,19 +306,15 @@ export default function GVChallenge() {
                 <>
                   {/* Instructions */}
                   <div className="text-sm space-y-1 mb-4" style={{ color: 'var(--text-2)' }}>
-                    <p>1. Open question on LeetCode below</p>
-                    <p>2. Solve &amp; Submit → LeetHub auto-pushes to GitHub ✅</p>
-                    <p>3. Come back, paste solution, generate LinkedIn post</p>
+                    <p>1. Open the question on LeetCode below</p>
+                    <p>2. Solve &amp; Submit — CodePrep auto-syncs to GitHub ✅</p>
                   </div>
 
                   {/* Open LeetCode button */}
                   <button
                     onClick={() => {
                       const url = getLeetCodeUrl(currentQuestion);
-                      if (url) {
-                        window.open(url, '_blank');
-                        setShowSolutionForm(true);
-                      }
+                      if (url) window.open(url, '_blank');
                     }}
                     disabled={!getLeetCodeUrl(currentQuestion)}
                     className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mb-4 ${
@@ -718,14 +336,10 @@ export default function GVChallenge() {
                     ) : (
                       'Question link unavailable'
                     )}
+      
                   </button>
 
                   {/* Already Solved Before (current day only) */}
-                  {/* Secondary action for users who solved this question
-                      before joining CodePrep. It marks the day complete
-                      and unlocks the next day WITHOUT pushing to GitHub,
-                      creating a Submission, or triggering the Extension
-                      sync. It only updates GV progress. */}
                   <button
                     onClick={handleAlreadySolved}
                     disabled={alreadySolvedBusy}
@@ -740,75 +354,6 @@ export default function GVChallenge() {
                     {alreadySolvedBusy ? '⏳ Marking…' : '✓ Already Solved Before'}
                   </button>
 
-                  {/* Solution form */}
-                  <AnimatePresence>
-                    {showSolutionForm && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="rounded-xl p-5 mt-2"
-                        style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}
-                      >
-                        <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-2)' }}>
-                          Paste your accepted solution:
-                        </p>
-
-                        {/* Language pills */}
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {LANGUAGES.map((lang) => (
-                            <button
-                              key={lang}
-                              onClick={() => setLanguage(lang)}
-                              className="cursor-pointer px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-                              style={{
-                                background: language === lang ? 'var(--orange)' : 'var(--bg-card)',
-                                color: language === lang ? '#fff' : 'var(--text-3)',
-                                border: '1px solid var(--border)',
-                              }}
-                            >
-                              {lang}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Textarea */}
-                        <textarea
-                          value={solution}
-                          onChange={(e) => setSolution(e.target.value)}
-                          rows={8}
-                          placeholder="# Paste your accepted solution here..."
-                          className="w-full rounded-xl p-3 text-sm resize-y outline-none transition-all"
-                          style={{
-                            background: 'var(--bg-primary)',
-                            border: '1px solid var(--border)',
-                            color: 'var(--text-1)',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            fontSize: '13px',
-                          }}
-                          onFocus={(e) => { e.target.style.borderColor = 'var(--orange-dim)'; }}
-                          onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                        />
-
-                        {/* Generate button */}
-                        <button
-                          onClick={handleGeneratePost}
-                          disabled={!solution.trim() || isGenerating}
-                          className="cursor-pointer w-full mt-3 py-3 rounded-xl font-semibold text-black text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{ background: 'linear-gradient(135deg, var(--orange), var(--secondary))' }}
-                        >
-                          {isGenerating ? (
-                            <>
-                              <Loader2 size={15} className="animate-spin" />
-                              🤖 AI is writing your post...
-                            </>
-                          ) : (
-                            'Generate LinkedIn Post →'
-                          )}
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </>
               )}
             </>
@@ -944,10 +489,6 @@ export default function GVChallenge() {
                           <button
                             onClick={() => {
                               window.open(getLeetCodeUrl(q), '_blank');
-                              if (isToday) {
-                                setShowSolutionForm(true);
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                              }
                             }}
                             className="cursor-pointer text-sm font-medium hover:underline transition-all"
                             style={{ color: 'var(--orange)' }}
