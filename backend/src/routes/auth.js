@@ -50,6 +50,7 @@ router.post('/register', async (req, res) => {
         githubConnected: savedUser.githubConnected,
         githubUsername: savedUser.githubUsername,
         githubProfileUrl: savedUser.githubProfileUrl,
+        githubRepositoryUrl: savedUser.githubRepositoryUrl,
         linkedinConnected: savedUser.linkedinConnected,
         linkedinProfileUrl: savedUser.linkedinProfileUrl,
         isOnboarded: savedUser.isOnboarded
@@ -101,6 +102,7 @@ router.post('/login', async (req, res) => {
         githubConnected: user.githubConnected,
         githubUsername: user.githubUsername,
         githubProfileUrl: user.githubProfileUrl,
+        githubRepositoryUrl: user.githubRepositoryUrl,
         linkedinConnected: user.linkedinConnected,
         linkedinProfileUrl: user.linkedinProfileUrl,
         isOnboarded: user.isOnboarded
@@ -194,6 +196,7 @@ router.post('/firebase', async (req, res) => {
         githubConnected: user.githubConnected,
         githubUsername: user.githubUsername,
         githubProfileUrl: user.githubProfileUrl,
+        githubRepositoryUrl: user.githubRepositoryUrl,
         linkedinConnected: user.linkedinConnected,
         linkedinProfileUrl: user.linkedinProfileUrl,
         isOnboarded: user.isOnboarded
@@ -454,6 +457,7 @@ router.post('/onboarding/complete', authMiddleware, async (req, res) => {
         githubConnected: user.githubConnected,
         githubUsername: user.githubUsername,
         githubProfileUrl: user.githubProfileUrl,
+        githubRepositoryUrl: user.githubRepositoryUrl,
         linkedinConnected: user.linkedinConnected,
         linkedinProfileUrl: user.linkedinProfileUrl,
         isOnboarded: user.isOnboarded

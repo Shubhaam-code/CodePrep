@@ -48,6 +48,7 @@ exports.solveQuestion = async (req, res) => {
       success: true,
       submissionSaved: result.submissionSaved,
       githubSynced: result.githubSynced,
+      githubSyncError: result.githubSyncError || null,
     });
   } catch (error) {
     console.error('Solve question submission error:', error);

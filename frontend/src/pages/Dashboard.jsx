@@ -10,8 +10,8 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
 import { useAppSelector, useAppDispatch } from '../store/store';
-import { setUser } from '../store/authSlice';
 import Sidebar from '../components/dashboard/Sidebar';
+import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 
 /* ─────────────────────────────────────────────
    Helpers
@@ -291,10 +291,7 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
   }
 
   // 3. GitHub repository link
-  const repoName = data?.repositoryName || 'company-preparation';
-  const repoUrl = user?.githubUsername 
-    ? `https://github.com/${user.githubUsername}/${repoName}`
-    : '#';
+  const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
 
   return (
     <div
@@ -372,16 +369,16 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
       <div className="pt-2 border-t border-white/5 space-y-2">
         <div className="flex gap-2">
           <a
-            href={githubConnected ? repoUrl : '#'}
+            href={githubConnected && repoUrl ? repoUrl : '#'}
             target="_blank"
             rel="noopener noreferrer"
             className={`flex-1 py-2 text-center text-[10px] font-extrabold rounded-lg border transition flex items-center justify-center gap-1.5 ${
-              githubConnected
+              githubConnected && repoUrl
                 ? 'text-gray-300 border-white/10 bg-white/[0.02] hover:bg-white/[0.06] hover:text-white'
                 : 'text-gray-600 border-white/5 bg-transparent cursor-not-allowed pointer-events-none'
             }`}
           >
-            Open Repository
+            {repoUrl ? 'Open Repository' : 'Repository Pending'}
           </a>
           <button
             onClick={() => navigate('/dashboard/dsa')}
@@ -469,6 +466,7 @@ function GitHubStatsCard(props) {
   const {
     githubConnected = false,
     repositoryName = null,
+    repositoryExists = false,
     totalSolvedQuestions = 0,
     totalCompaniesCovered = 0,
     lastSyncAt = null,
@@ -521,8 +519,8 @@ function GitHubStatsCard(props) {
             style={{ background: 'var(--bg-hover, #141428)', color: 'var(--text-2, #94A3B8)' }}
           >
             <GitBranch size={12} className="text-slate-400 shrink-0" />
-            <span className="truncate" title={repositoryName || 'company-preparation'}>
-              {repositoryName || 'company-preparation'}
+            <span className="truncate" title={repositoryExists ? repositoryName || 'company-preparation' : 'Not created yet'}>
+              {repositoryExists ? repositoryName || 'company-preparation' : 'Not created yet'}
             </span>
           </div>
         </div>
@@ -647,30 +645,13 @@ export default function Dashboard() {
     };
   }, []);
 
-  // 3. Listen for mock OAuth success messages from GitHub popup window
-  useEffect(() => {
-    const handleOAuthMessage = async (event) => {
-      if (event.data?.type === 'oauth-success' && event.data?.provider === 'github') {
-        try {
-          console.log('[Dashboard] GitHub OAuth succeeded. Syncing user profile details...');
-          const profileRes = await apiClient.get('/api/auth/me');
-          dispatch(setUser(profileRes.data));
-          queryClient.invalidateQueries(['githubStats']);
-          queryClient.invalidateQueries(['dashboard']);
-        } catch (err) {
-          console.error('[Dashboard] Failed to sync profile details:', err);
-        }
-      }
-    };
-    window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
-  }, [dispatch, queryClient]);
-
   const handleReconnectGithub = () => {
-    const baseUrl = import.meta.env.VITE_API_URL;
-    const token = localStorage.getItem('token');
-    const connectUrl = `${baseUrl}/api/auth/github?token=${token}`;
-    window.open(connectUrl, 'GitHub Connect', 'width=600,height=600');
+    openGitHubOAuthPopup({
+      dispatch,
+      queryClient,
+      onError: (message) => console.error('[Dashboard] GitHub OAuth failed:', message),
+      onClosed: () => console.warn('[Dashboard] GitHub OAuth popup closed before completion.'),
+    });
   };
 
   const { data, isLoading } = useQuery({

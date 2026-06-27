@@ -9,6 +9,53 @@ const repoUrl = (username, repo, ...rest) => {
   return `https://api.github.com/repos/${segments.join('/')}`;
 };
 
+const publicRepoUrl = (username, repo) =>
+  `https://github.com/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`;
+
+const classifyGitHubError = (error, fallback = 'GitHub request failed.') => {
+  if (!error.response) {
+    return {
+      code: 'NETWORK_ERROR',
+      status: 0,
+      message: 'Network error while contacting GitHub. Please try again.',
+    };
+  }
+
+  const status = error.response.status;
+  const apiMessage = error.response.data?.message;
+
+  if (status === 401) {
+    return {
+      code: 'TOKEN_EXPIRED',
+      status,
+      message: 'GitHub authorization expired. Reconnect GitHub and try again.',
+    };
+  }
+  if (status === 403) {
+    const remaining = error.response.headers?.['x-ratelimit-remaining'];
+    return {
+      code: remaining === '0' ? 'RATE_LIMITED' : 'GITHUB_FORBIDDEN',
+      status,
+      message: remaining === '0'
+        ? 'GitHub rate limit reached. Please try again later.'
+        : apiMessage || 'GitHub rejected the request. Check repository permissions and reconnect if needed.',
+    };
+  }
+  if (status === 422 && /already exists/i.test(apiMessage || '')) {
+    return {
+      code: 'REPOSITORY_ALREADY_EXISTS',
+      status,
+      message: 'Repository already exists on GitHub.',
+    };
+  }
+
+  return {
+    code: 'GITHUB_API_ERROR',
+    status,
+    message: apiMessage || fallback,
+  };
+};
+
 /**
  * Check if a repository exists for the user.
  * @param {string} username - User's GitHub username
@@ -57,6 +104,37 @@ const createRepository = async (token, repo = 'company-preparation') => {
     }
   );
   return response.data;
+};
+
+const ensureRepositoryExists = async (username, token, repo = 'company-preparation') => {
+  const exists = await checkRepositoryExists(username, token, repo);
+  if (exists) {
+    return {
+      exists: true,
+      created: false,
+      repositoryUrl: publicRepoUrl(username, repo),
+    };
+  }
+
+  try {
+    const createdRepo = await createRepository(token, repo);
+    return {
+      exists: true,
+      created: true,
+      repositoryUrl: createdRepo.html_url || publicRepoUrl(username, repo),
+    };
+  } catch (error) {
+    const classified = classifyGitHubError(error, 'Failed to create repository on GitHub.');
+    if (classified.code === 'REPOSITORY_ALREADY_EXISTS') {
+      return {
+        exists: true,
+        created: false,
+        repositoryUrl: publicRepoUrl(username, repo),
+      };
+    }
+    error.githubError = classified;
+    throw error;
+  }
 };
 
 /**
@@ -182,8 +260,10 @@ const createOrUpdateFile = async (
 };
 
 module.exports = {
+  classifyGitHubError,
   checkRepositoryExists,
   createRepository,
+  ensureRepositoryExists,
   checkFileExists,
   createFile,
   getFileDetails,

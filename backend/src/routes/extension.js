@@ -172,7 +172,8 @@ router.post('/sync', authMiddleware, async (req, res) => {
       questionId: question._id,
       questionIdUsed: question._id,
       githubSyncResult: result.githubSynced,
-      githubSynced: result.githubSynced
+      githubSynced: result.githubSynced,
+      githubSyncError: result.githubSyncError || null
     });
   } catch (error) {
     console.error('❌ Error handling extension sync request:', error);

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
+import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 import {
   FaGithub,
   FaArrowRight,
@@ -18,11 +20,13 @@ import {
 export default function Onboarding() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const { user } = useAppSelector((s) => s.auth);
 
   const [step, setStep] = useState(1);
   const [extensionConnected, setExtensionConnected] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isConnectingGithub, setIsConnectingGithub] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // 1. Extension Handshake: Poll every 2 seconds for presence of companion extension
@@ -56,30 +60,22 @@ export default function Onboarding() {
     };
   }, [extensionConnected]);
 
-  // 2. Listen for mock OAuth success messages from GitHub popup window
-  useEffect(() => {
-    const handleOAuthMessage = async (event) => {
-      if (event.data?.type === 'oauth-success' && event.data?.provider === 'github') {
-        try {
-          console.log('[Onboarding] GitHub OAuth succeeded. Syncing user profile details...');
-          const profileRes = await apiClient.get('/api/auth/me');
-          dispatch(setUser(profileRes.data));
-        } catch (err) {
-          console.error('[Onboarding] Failed to sync profile details:', err);
-          setErrorMsg('Failed to sync profile details after connection.');
-        }
-      }
-    };
-    window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
-  }, [dispatch]);
-
   const handleConnectGitHub = () => {
     setErrorMsg('');
-    const baseUrl = import.meta.env.VITE_API_URL;
-    const token = localStorage.getItem('token');
-    const connectUrl = `${baseUrl}/api/auth/github?token=${token}`;
-    window.open(connectUrl, 'GitHub Connect', 'width=600,height=600');
+    setIsConnectingGithub(true);
+    openGitHubOAuthPopup({
+      dispatch,
+      queryClient,
+      onSuccess: () => setIsConnectingGithub(false),
+      onError: (message) => {
+        setIsConnectingGithub(false);
+        setErrorMsg(message);
+      },
+      onClosed: () => {
+        setIsConnectingGithub(false);
+        setErrorMsg('GitHub connection was cancelled before authorization completed.');
+      },
+    });
   };
 
   const handleSkip = () => {
@@ -110,6 +106,7 @@ export default function Onboarding() {
   };
 
   const githubConnected = user?.githubConnected || false;
+  const githubProfileUrl = user?.githubProfileUrl || (user?.githubUsername ? `https://github.com/${user.githubUsername}` : '');
 
   // Stepper state configurations
   const stepsConfig = [
@@ -248,7 +245,7 @@ export default function Onboarding() {
                     Connect GitHub <FaGithub size={22} className="text-[#FF7A00]" />
                   </h2>
                   <p className="text-gray-400 text-sm">
-                    Allow CodePrep to initialize your portfolio repository (`company-preparation`) and upload your solutions automatically.
+                    Connect your GitHub account now. CodePrep will create the portfolio repository only when your first solution is synced.
                   </p>
                 </div>
 
@@ -262,7 +259,7 @@ export default function Onboarding() {
                         {githubConnected ? user.githubUsername : 'GitHub disconnected'}
                       </h3>
                       <p className="text-gray-500 text-[10px] mt-0.5">
-                        {githubConnected ? 'OAuth Connection Active' : 'Setup required to push solutions'}
+                        {githubConnected ? githubProfileUrl : 'Setup required to push solutions'}
                       </p>
                     </div>
                   </div>
@@ -274,9 +271,10 @@ export default function Onboarding() {
                   ) : (
                     <button
                       onClick={handleConnectGitHub}
+                      disabled={isConnectingGithub}
                       className="cursor-pointer px-4 py-2 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-xs text-black rounded-xl transition shadow"
                     >
-                      Connect GitHub
+                      {isConnectingGithub ? 'Connecting...' : 'Connect GitHub'}
                     </button>
                   )}
                 </div>

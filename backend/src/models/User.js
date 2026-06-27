@@ -61,21 +61,9 @@ solvedQuestions: [
         default: null,
       },
     },
-    githubConnected: {
-      type: Boolean,
-      default: false,
-    },
     isOnboarded: {
       type: Boolean,
       default: false,
-    },
-    githubUsername: {
-      type: String,
-      default: null,
-    },
-    githubProfileUrl: {
-      type: String,
-      default: null,
     },
     linkedinConnected: {
       type: Boolean,
@@ -87,24 +75,29 @@ solvedQuestions: [
     },
 
     githubId: {
-  type: String,
-  default: null,
-},
-
-githubUsername: {
-  type: String,
-  default: null,
-},
-
-githubAccessToken: {
-  type: String,
-  default: null,
-},
-
-githubConnected: {
-  type: Boolean,
-  default: false,
-},
+      type: String,
+      default: null,
+    },
+    githubUsername: {
+      type: String,
+      default: null,
+    },
+    githubProfileUrl: {
+      type: String,
+      default: null,
+    },
+    githubRepositoryUrl: {
+      type: String,
+      default: null,
+    },
+    githubAccessToken: {
+      type: String,
+      default: null,
+    },
+    githubConnected: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

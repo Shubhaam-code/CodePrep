@@ -1,10 +1,10 @@
-import React, { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../store/store';
-import { setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
+import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 import Sidebar from '../components/dashboard/Sidebar';
 import {
   FaGithub,
@@ -37,7 +37,10 @@ function timeAgo(date) {
 export default function GitHubProfilePage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const { user } = useAppSelector((s) => s.auth);
+  const [oauthMessage, setOauthMessage] = useState('');
+  const [isConnectingGithub, setIsConnectingGithub] = useState(false);
 
   // Fetch GitHub stats from backend
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -49,37 +52,33 @@ export default function GitHubProfilePage() {
     staleTime: 10 * 1000,
   });
 
-  // Listen for mock OAuth success messages from the popup window
-  useEffect(() => {
-    const handleOAuthMessage = async (event) => {
-      if (event.data?.type === 'oauth-success' && event.data?.provider === 'github') {
-        try {
-          const profileRes = await apiClient.get('/api/auth/me');
-          dispatch(setUser(profileRes.data));
-          refetch();
-        } catch (err) {
-          console.error('[GitHub Profile] Failed to sync profile details:', err);
-        }
-      }
-    };
-    window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
-  }, [dispatch, refetch]);
-
   const handleReconnect = () => {
-    const baseUrl = import.meta.env.VITE_API_URL;
-    const token = localStorage.getItem('token');
-    const connectUrl = `${baseUrl}/api/auth/github?token=${token}`;
-    window.open(connectUrl, 'GitHub Connect', 'width=600,height=600');
+    setOauthMessage('');
+    setIsConnectingGithub(true);
+    openGitHubOAuthPopup({
+      dispatch,
+      queryClient,
+      onSuccess: () => {
+        setIsConnectingGithub(false);
+        setOauthMessage('GitHub connected successfully.');
+        refetch();
+      },
+      onError: (message) => {
+        setIsConnectingGithub(false);
+        setOauthMessage(message);
+      },
+      onClosed: () => {
+        setIsConnectingGithub(false);
+        setOauthMessage('GitHub connection was cancelled before authorization completed.');
+      },
+    });
   };
 
   // Base configurations
   const username = user?.githubUsername || 'Not connected';
-  const profileUrl = user?.githubProfileUrl || '#';
+  const profileUrl = user?.githubProfileUrl || (user?.githubUsername ? `https://github.com/${user.githubUsername}` : '#');
   const repoName = data?.repositoryName || 'company-preparation';
-  const repoUrl = user?.githubUsername 
-    ? `https://github.com/${user.githubUsername}/${repoName}`
-    : '#';
+  const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
 
   const isConnected = data?.githubConnected || false;
 
@@ -117,6 +116,11 @@ export default function GitHubProfilePage() {
             </div>
           ) : (
             <div className="space-y-6">
+              {oauthMessage && (
+                <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl p-4 text-sm font-medium">
+                  {oauthMessage}
+                </div>
+              )}
               {/* Profile connection header card */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -151,9 +155,10 @@ export default function GitHubProfilePage() {
                   <div className="flex flex-wrap gap-3">
                     <button
                       onClick={handleReconnect}
+                      disabled={isConnectingGithub}
                       className="cursor-pointer px-4 py-2 text-xs font-extrabold text-black bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 rounded-xl transition shadow-md shadow-[#FF7A00]/10 flex items-center gap-2"
                     >
-                      <FaFire size={12} /> {isConnected ? 'Reconnect GitHub' : 'Connect GitHub'}
+                      <FaFire size={12} /> {isConnectingGithub ? 'Connecting...' : isConnected ? 'Reconnect GitHub' : 'Connect GitHub'}
                     </button>
                   </div>
                 </div>
@@ -175,7 +180,9 @@ export default function GitHubProfilePage() {
                     <div className="space-y-3">
                       <div>
                         <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Repository Name</span>
-                        <p className="text-sm font-mono text-white mt-0.5">{repoName}</p>
+                        <p className="text-sm font-mono text-white mt-0.5">
+                          {data?.repositoryExists ? repoName : 'Not created yet'}
+                        </p>
                       </div>
                       <div>
                         <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">GitHub Profile URL</span>
@@ -188,6 +195,7 @@ export default function GitHubProfilePage() {
                           {profileUrl} <FaExternalLinkAlt size={10} className="text-gray-500" />
                         </a>
                       </div>
+                      {repoUrl && (
                       <div>
                         <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Repository Link</span>
                         <a
@@ -199,6 +207,7 @@ export default function GitHubProfilePage() {
                           {repoUrl} <FaExternalLinkAlt size={10} className="text-gray-500" />
                         </a>
                       </div>
+                      )}
                     </div>
 
                     <div className="pt-3 border-t border-white/5 flex gap-3">
@@ -210,14 +219,16 @@ export default function GitHubProfilePage() {
                       >
                         Open GitHub Profile
                       </a>
-                      <a
-                        href={repoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 py-2 text-center text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl transition flex items-center justify-center gap-1.5"
-                      >
-                        Open Repository
-                      </a>
+                      {repoUrl && (
+                        <a
+                          href={repoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 py-2 text-center text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl transition flex items-center justify-center gap-1.5"
+                        >
+                          Open Repository
+                        </a>
+                      )}
                     </div>
                   </motion.div>
 

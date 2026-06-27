@@ -57,34 +57,50 @@ exports.createPrepRepository = async (req, res) => {
     try {
       repoExists = await githubRepositoryService.checkRepositoryExists(username, token, repo);
     } catch (err) {
+      const classified = githubRepositoryService.classifyGitHubError(err, 'Failed to verify repository status with GitHub.');
       console.error('Error checking repository existence:', err.response ? err.response.data : err.message);
       return res.status(400).json({
         success: false,
-        message: 'Failed to verify repository status with GitHub.',
+        message: classified.message,
+        code: classified.code,
       });
     }
 
     if (repoExists) {
+      const repositoryUrl = `https://github.com/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`;
+      if (repo === REPOS.company && user.githubRepositoryUrl !== repositoryUrl) {
+        user.githubRepositoryUrl = repositoryUrl;
+        await user.save();
+      }
       return res.status(200).json({
         success: true,
         repositoryCreated: false,
         repositoryName: repo,
+        repositoryUrl,
       });
     }
 
     // 2. Create the repository since it does not exist
     try {
-      await githubRepositoryService.createRepository(token, repo);
+      const createdRepo = await githubRepositoryService.createRepository(token, repo);
+      const repositoryUrl = createdRepo.html_url || `https://github.com/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`;
+      if (repo === REPOS.company) {
+        user.githubRepositoryUrl = repositoryUrl;
+        await user.save();
+      }
       return res.status(201).json({
         success: true,
         repositoryCreated: true,
         repositoryName: repo,
+        repositoryUrl,
       });
     } catch (err) {
+      const classified = githubRepositoryService.classifyGitHubError(err, 'Failed to create repository on GitHub.');
       console.error('Error creating repository:', err.response ? err.response.data : err.message);
       return res.status(400).json({
         success: false,
-        message: 'Failed to create repository on GitHub.',
+        message: classified.message,
+        code: classified.code,
       });
     }
   } catch (error) {
@@ -376,6 +392,30 @@ exports.getStats = async (req, res) => {
     // one. We additionally expose the list of all dedicated repos so the
     // client can display / check each one without guessing names.
     const repositoryName = githubConnected ? REPOS.company : null;
+    let repositoryUrl = githubConnected ? user.githubRepositoryUrl : null;
+    let repositoryExists = false;
+
+    if (githubConnected && user.githubUsername && user.githubAccessToken) {
+      try {
+        repositoryExists = await githubRepositoryService.checkRepositoryExists(
+          user.githubUsername,
+          user.githubAccessToken,
+          REPOS.company
+        );
+        if (repositoryExists) {
+          repositoryUrl = `https://github.com/${encodeURIComponent(user.githubUsername)}/${encodeURIComponent(REPOS.company)}`;
+          if (user.githubRepositoryUrl !== repositoryUrl) {
+            user.githubRepositoryUrl = repositoryUrl;
+            await user.save();
+          }
+        } else {
+          repositoryUrl = null;
+        }
+      } catch (err) {
+        const classified = githubRepositoryService.classifyGitHubError(err, 'Failed to verify repository status with GitHub.');
+        console.error('Error checking GitHub repository in stats:', classified.message);
+      }
+    }
     const availableRepositories = Object.values(REPOS);
 
     // Retrieve all submissions for the logged-in user
@@ -426,7 +466,11 @@ exports.getStats = async (req, res) => {
 
     return res.status(200).json({
       githubConnected,
+      githubUsername: user.githubUsername || null,
+      githubProfileUrl: user.githubProfileUrl || null,
       repositoryName,
+      repositoryUrl,
+      repositoryExists,
       availableRepositories,
       totalSolvedQuestions,
       totalCompaniesCovered,

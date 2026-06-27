@@ -148,9 +148,15 @@ console.log("CURRENT SYNC CONTEXT:", syncContext);
       });
 
       if (response.data.success) {
-  
-
-        setToast({ message: 'Question synced to Github', type: 'success' });
+        const message = response.data.githubSynced
+          ? 'Question synced to GitHub'
+          : response.data.githubSyncError
+          ? `Saved locally. ${response.data.githubSyncError}`
+          : 'Question saved locally';
+        setToast({
+          message,
+          type: response.data.githubSyncError ? 'error' : 'success',
+        });
 
         // Refresh global user profile so solvedQuestions / streak stats stay accurate
         const profileRes = await apiClient.get('/api/auth/me');

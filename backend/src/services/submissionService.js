@@ -140,6 +140,7 @@ const saveSubmissionAndPush = async (
   }
 
   let githubSynced = false;
+  let githubSyncError = null;
 
   console.log("GitHub Connected:", user.githubConnected);
 console.log("GitHub Username:", user.githubUsername);
@@ -162,26 +163,25 @@ console.log("Has Token:", !!user.githubAccessToken);
     });
 
     try {
-      // Verify the dedicated repository exists. For the GV Challenge we
-      // auto-create the repository on first sync so that solving Day 1
-      // works without requiring a manual /create-repository call. The
-      // Company flow keeps its existing "create repo manually first"
-      // contract — the auto-create only kicks in for the GV context.
+      // Lazily create the target repository on first sync. OAuth only stores
+      // profile/token data; existing repositories are detected first so
+      // connected users do not get duplicate repos.
       let repoExists = false;
       try {
-        repoExists = await githubRepositoryService.checkRepositoryExists(username, token, repo);
-      } catch (err) {
-        console.error(`Error checking repository existence for ${repo}:`, err.message);
-      }
-
-      if (!repoExists && challenge === 'gv') {
-        try {
-          await githubRepositoryService.createRepository(token, repo);
-          repoExists = true;
-          console.log(`Auto-created GV Challenge repository "${repo}" for user: ${username}`);
-        } catch (createRepoErr) {
-          console.error(`Failed to auto-create GV Challenge repository "${repo}":`, createRepoErr.message);
+        const ensuredRepo = await githubRepositoryService.ensureRepositoryExists(username, token, repo);
+        repoExists = ensuredRepo.exists;
+        if (
+          repo === 'company-preparation' &&
+          ensuredRepo.repositoryUrl &&
+          user.githubRepositoryUrl !== ensuredRepo.repositoryUrl
+        ) {
+          user.githubRepositoryUrl = ensuredRepo.repositoryUrl;
+          await user.save();
         }
+      } catch (err) {
+        const classified = err.githubError || githubRepositoryService.classifyGitHubError(err, `Failed to prepare repository "${repo}".`);
+        githubSyncError = classified.message;
+        console.error(`Error preparing repository ${repo}:`, classified.message);
       }
 
       if (repoExists) {
@@ -459,13 +459,16 @@ console.log("Has Token:", !!user.githubAccessToken);
         console.warn(`GitHub repository "${repo}" does not exist for user: ${username}`);
       }
     } catch (pushErr) {
-      console.error('Failed to auto-sync submission to GitHub:', pushErr.message);
+      const classified = githubRepositoryService.classifyGitHubError(pushErr, 'Failed to sync submission to GitHub.');
+      githubSyncError = classified.message;
+      console.error('Failed to auto-sync submission to GitHub:', classified.message);
     }
   }
 
   return {
     submissionSaved: true,
     githubSynced,
+    githubSyncError,
   };
 };
 
