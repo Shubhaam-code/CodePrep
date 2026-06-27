@@ -38,9 +38,11 @@ export function openGitHubOAuthPopup({
     if (profileRes?.data && dispatch) {
       dispatch(setUser(profileRes.data));
     }
-    queryClient?.invalidateQueries({ queryKey: ['githubStats'] });
-    queryClient?.invalidateQueries({ queryKey: ['githubProfileStats'] });
-    queryClient?.invalidateQueries({ queryKey: ['dashboard'] });
+    if (queryClient) {
+      queryClient.invalidateQueries({ queryKey: ['githubStats'] });
+      queryClient.invalidateQueries({ queryKey: ['githubProfileStats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    }
     return profileRes.data;
   };
 
@@ -74,9 +76,36 @@ export function openGitHubOAuthPopup({
   closeTimer = setInterval(() => {
     if (!popup.closed) return;
     cleanup();
-    if (!settled) {
+    if (settled) return;
+
+    // Popup closed without receiving a postMessage.
+    // The OAuth may have succeeded on the backend but the popup's
+    // window.opener was severed (e.g. GitHub's COOP headers) so the
+    // postMessage never arrived.  Check the backend directly.
+    settled = true;
+
+    const checkUserState = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const data = await refreshUser();
+          if (data?.githubConnected) {
+            onSuccess?.({
+              githubUsername: data.githubUsername,
+              githubProfileUrl: data.githubProfileUrl,
+            });
+            return;
+          }
+        } catch (err) {
+          console.error('[GitHub OAuth] Fallback user check failed:', err);
+        }
+        if (i < retries - 1) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
       onClosed?.();
-    }
+    };
+
+    checkUserState();
   }, 500);
 
   return popup;

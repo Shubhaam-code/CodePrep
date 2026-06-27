@@ -12,7 +12,7 @@ const { resolveRepoForContext } = require('./contextRepo');
  * Solutions are routed to a dedicated GitHub repository based on the
  * learning context:
  *   - GV Challenge      → gvishwanathan-challenge
- *   - Pattern roadmap   → pattern-roadmap
+ *   - Pattern roadmap   → DSA-Patterns
  *   - Sheet roadmap     → sheet-roadmap
  *   - Company questions → company-preparation
  *   - General           → general-prep
@@ -45,6 +45,24 @@ const saveSubmissionAndPush = async (
   const question = await Question.findById(questionId);
   if (!question) {
     throw new Error('Question not found');
+  }
+
+  // ── Roadmap pattern auto-detection ─────────────────────────────────
+  // If the caller did not explicitly supply a pattern slug but the
+  // question itself is tagged with a roadmap pattern (via the
+  // roadmapPattern field on the Question document), derive the slug
+  // from the document.  This lets the front-end send only questionId
+  // and code without manually repeating the pattern — the back-end
+  // resolves it from the question's own metadata.
+  if (!pattern && question.roadmapPattern) {
+    pattern = question.roadmapPattern;
+  }
+
+  // When a roadmap pattern is active (either supplied or auto-detected)
+  // and no syncContext was given, build a context token that keeps
+  // the "already solved" deduplication scoped to this pattern.
+  if (pattern && !syncContext) {
+    syncContext = `pattern_${pattern}`;
   }
 
   // 2. Save submission (include company if provided)
@@ -268,9 +286,41 @@ console.log("Has Token:", !!user.githubAccessToken);
           }
         } else if (pattern) {
           // Pattern roadmap: organise by pattern slug.
-          const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-          filePath = `${pattern}/${sanitizedTitle}.${ext}`;
-          isReadyToPush = true;
+          // Ensure the pattern folder exists before pushing (GitHub's Contents
+          // API can create intermediate directories on PUT, but the existing
+          // GV / Company flows explicitly seed folders with .gitkeep files, so
+          // we follow the same convention for consistency).
+          const gitkeepPath = `${pattern}/.gitkeep`;
+          let folderReady = false;
+          try {
+            const exists = await githubRepositoryService.checkFileExists(
+              username, token, gitkeepPath, repo
+            );
+            folderReady = !!exists;
+          } catch (_) { /* folder likely missing — fall through to create */ }
+
+          if (!folderReady) {
+            try {
+              const base64Content = Buffer.from('').toString('base64');
+              await githubRepositoryService.createFile(
+                username, token, gitkeepPath,
+                `Initialize ${pattern} folder (Auto-created)`,
+                base64Content, repo
+              );
+              folderReady = true;
+            } catch (err) {
+              console.error(
+                `Failed to create pattern folder "${pattern}" in ${repo}:`,
+                err.message
+              );
+            }
+          }
+
+          if (folderReady) {
+            const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+            filePath = `${pattern}/${sanitizedTitle}.${ext}`;
+            isReadyToPush = true;
+          }
         } else if (sheet) {
           // Sheet roadmap: organise by sheet slug.
           const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();

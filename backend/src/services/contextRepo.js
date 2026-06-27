@@ -11,7 +11,7 @@
 const REPOS = {
   company: 'company-preparation',
   gv:      'gvishwanathan-challenge',
-  pattern: 'pattern-roadmap',
+  pattern: 'DSA-Patterns',
   sheet:   'sheet-roadmap',
   general: 'general-prep',
 };
