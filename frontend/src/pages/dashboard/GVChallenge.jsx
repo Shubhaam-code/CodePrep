@@ -227,7 +227,7 @@ export default function GVChallenge() {
                 G. Vishwanathan Challenge
               </span>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center">
               <span
                 className="text-[10px] font-bold tracking-wider px-3 py-1 rounded-full"
                 style={{
@@ -238,16 +238,6 @@ export default function GVChallenge() {
               >
                 ● GITHUB CONNECTED
               </span>
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold"
-                style={{ background: 'linear-gradient(135deg, #FF6B1A, #FF9A1A)' }}
-              >
-                {(user?.displayName || user?.githubUsername || 'U')
-                  .split(/[-_\s]/)
-                  .map(w => w[0]?.toUpperCase())
-                  .slice(0, 2)
-                  .join('')}
-              </div>
             </div>
           </div>
 
@@ -257,11 +247,18 @@ export default function GVChallenge() {
               className="font-black leading-none tracking-tight"
               style={{ fontSize: 'clamp(36px, 4vw, 54px)', color: '#ffffff', letterSpacing: '-0.03em' }}
             >
-              G. Vishwanathan
-              <span style={{ color: '#FF6B1A' }}> Challenge</span>
+              G. Vishwanathan{' '}
+              <span style={{
+                background: 'linear-gradient(135deg, #FF6B1A, #ff9a1a)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                display: 'inline-block'
+              }}>
+                86-Day Challenge
+              </span>
             </h1>
-            <p className="text-base font-normal max-w-xl" style={{ color: '#6b7280', lineHeight: 1.6 }}>
-              30-day structured DSA practice program. One problem per day, real interview questions, progressive difficulty.
+            <p className="text-base font-normal max-w-3xl" style={{ color: '#6b7280', lineHeight: 1.6 }}>
+              Complete 86 carefully curated DSA interview problems with a structured day-by-day roadmap. Track your progress and become interview ready.
             </p>
           </div>
 
@@ -286,7 +283,7 @@ export default function GVChallenge() {
                   <span className="text-3xl font-black text-white" style={{ letterSpacing: '-0.04em' }}>
                     {prog.totalCompleted}
                   </span>
-                  <span className="text-sm font-medium" style={{ color: '#4b5563' }}>/30</span>
+                  <span className="text-sm font-medium" style={{ color: '#4b5563' }}>/86</span>
                 </div>
               </div>
             </div>
@@ -316,13 +313,13 @@ export default function GVChallenge() {
             </div>
 
             {/* Progress pill */}
-            <div className="flex-1 hidden lg:block">
+            <div className="flex-grow hidden lg:block">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: '#4b5563' }}>
                   Overall Progress
                 </span>
                 <span className="text-[11px] font-bold" style={{ color: '#FF6B1A' }}>
-                  {Math.round((prog.totalCompleted / 30) * 100)}%
+                  {Math.round((prog.totalCompleted / 86) * 100)}%
                 </span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#1e1e1e' }}>
@@ -330,7 +327,7 @@ export default function GVChallenge() {
                   className="h-full rounded-full"
                   style={{ backgroundColor: '#FF6B1A' }}
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (prog.totalCompleted / 30) * 100)}%` }}
+                  animate={{ width: `${Math.min(100, (prog.totalCompleted / 86) * 100)}%` }}
                   transition={{ duration: 0.8, ease: 'easeOut' }}
                 />
               </div>
@@ -368,7 +365,7 @@ export default function GVChallenge() {
               <div className="p-16 text-center space-y-4">
                 <div className="text-5xl">🎉</div>
                 <p className="text-2xl font-black text-white" style={{ letterSpacing: '-0.03em' }}>
-                  All 30 Challenges Completed!
+                  All 86 Challenges Completed!
                 </p>
                 <p className="text-sm" style={{ color: '#6b7280' }}>
                   You have conquered the G. Vishwanathan Challenge. Respect.
@@ -459,7 +456,7 @@ export default function GVChallenge() {
                         className="text-[10px] font-semibold tracking-widest uppercase"
                         style={{ color: '#3d3d3d' }}
                       >
-                        Day {currentDay} of 30
+                        Day {currentDay} of 86
                       </span>
                     </div>
 

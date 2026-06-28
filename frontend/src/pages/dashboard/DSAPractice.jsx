@@ -1,270 +1,704 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { FaSearch as Search, FaCode as Code2 } from 'react-icons/fa';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FaSearch, FaBuilding, FaCheckCircle, FaArrowRight, FaSpinner, FaTrophy } from 'react-icons/fa';
 import Sidebar from '../../components/dashboard/Sidebar';
-import axios from '../../api/axios';
+import apiClient from '../../api/axios';
+import { useAppSelector } from '../../store/store';
 
-// Helper functions
-const formatName = (name) => {
+// ─── Constants ───────────────────────────────────────────────────────────────
+const SIDEBAR_W = 220;
+const ORANGE = '#FF6B1A';
+const HOT_COMPANIES = new Set(['google', 'amazon', 'microsoft', 'meta', 'flipkart', 'apple', 'netflix']);
+const PAGE_SIZE = 24;
+
+const FAANG = new Set(['google', 'meta', 'amazon', 'apple', 'netflix', 'microsoft']);
+const MNC = new Set(['adobe', 'uber', 'salesforce', 'oracle', 'sap', 'ibm', 'accenture', 'deloitte', 'paypal', 'visa', 'mastercard', 'atlassian', 'shopify', 'twitter', 'linkedin', 'spotify', 'airbnb', 'lyft', 'stripe', 'square']);
+const INDIA = new Set(['flipkart', 'paytm', 'swiggy', 'zomato', 'airtel', 'jio', 'infosys', 'wipro', 'tcs', 'hcl', 'snapdeal', 'ola', 'phonepe', 'meesho', 'zepto', 'myntra', 'cred', 'razorpay', 'groww', 'zerodha']);
+
+const FILTER_PILLS = [
+  { id: 'all',     emoji: '🌟', label: 'All' },
+  { id: 'faang',   emoji: '🔥', label: 'FAANG' },
+  { id: 'mnc',     emoji: '💼', label: 'MNC' },
+  { id: 'startup', emoji: '🚀', label: 'Startup' },
+  { id: 'india',   emoji: '🇮🇳', label: 'India' },
+];
+
+const AVATAR_STYLES = [
+  { bg: '#1a0f00', color: '#FF6B1A', border: 'rgba(255,107,26,0.18)' },
+  { bg: '#0a0f1a', color: '#3b82f6', border: 'rgba(59,130,246,0.18)' },
+  { bg: '#0a1a0f', color: '#22c55e', border: 'rgba(34,197,94,0.18)' },
+  { bg: '#1a0a1a', color: '#a855f7', border: 'rgba(168,85,247,0.18)' },
+];
+
+function getAvatarStyle(name = '') {
+  const code = name.charCodeAt(0) - 65;
+  const idx = Math.max(0, code) % AVATAR_STYLES.length;
+  return AVATAR_STYLES[idx];
+}
+
+function matchesFilter(companyName, filterId) {
+  const key = companyName.toLowerCase().replace(/\s+/g, '');
+  if (filterId === 'all') return true;
+  if (filterId === 'faang') return FAANG.has(key) || [...FAANG].some(f => key.includes(f));
+  if (filterId === 'mnc') return MNC.has(key) || [...MNC].some(m => key.includes(m));
+  if (filterId === 'india') return INDIA.has(key) || [...INDIA].some(i => key.includes(i));
+  if (filterId === 'startup') {
+    const known = new Set([...FAANG, ...MNC, ...INDIA]);
+    return !([...known].some(k => key.includes(k)));
+  }
+  return true;
+}
+
+const FALLBACK_TAGS = {
+  google:    ['Array', 'DP', 'Graph'],
+  amazon:    ['Array', 'Tree', 'Design'],
+  microsoft: ['Tree', 'DP', 'Graph'],
+  meta:      ['Array', 'Hash Table', 'Graph'],
+  flipkart:  ['Array', 'DP', 'Greedy'],
+  apple:     ['Array', 'String', 'Math'],
+  netflix:   ['Array', 'Design', 'Hash Table'],
+  adobe:     ['Array', 'Math', 'String'],
+  uber:      ['Array', 'Graph', 'Tree'],
+  linkedin:  ['Array', 'Graph', 'DP'],
+  twitter:   ['Array', 'Design', 'Hash Table'],
+  default:   ['Array', 'DP', 'Tree'],
+};
+
+function getTopTags(name, metaTags = []) {
+  if (metaTags && Array.isArray(metaTags) && metaTags.length > 0) {
+    return metaTags.slice(0, 3);
+  }
+  let key = 'default';
+  if (name && typeof name === 'string') {
+    key = name.toLowerCase().trim();
+  } else if (name && typeof name === 'object' && name.name && typeof name.name === 'string') {
+    key = name.name.toLowerCase().trim();
+  }
+  return FALLBACK_TAGS[key] || FALLBACK_TAGS.default;
+}
+
+const formatCompanyName = (name) => {
   if (!name) return '';
   return name
     .split('-')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 };
 
-const getAvatarColor = (name) => {
-  if (!name) return '#6366F1';
-  const first = name.charAt(0).toLowerCase();
-  if ('abc'.includes(first)) return '#FF7A00';
-  if ('def'.includes(first)) return '#8B5CF6';
-  if ('ghi'.includes(first)) return '#3B82F6';
-  if ('jkl'.includes(first)) return '#10B981';
-  if ('mno'.includes(first)) return '#F59E0B';
-  if ('pqr'.includes(first)) return '#EF4444';
-  if ('stu'.includes(first)) return '#06B6D4';
-  if ('vwx'.includes(first)) return '#EC4899';
-  return '#6366F1';
-};
+// ─── Animated Counter Component ───────────────────────────────────────────────
+const AnimatedCounter = memo(function AnimatedCounter({ value, duration = 800 }) {
+  const [displayValue, setDisplayValue] = useState('0');
 
-const SIDEBAR_W = 224;
-
-export default function DSAPractice() {
-  const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('az');
-
-  // Fetch with react-query
-  const { data: companies = [], isLoading, isError } = useQuery({
-    queryKey: ['companies'],
-    queryFn: () => axios.get('/api/companies').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Filter + Sort logic
-  const filtered = useMemo(() => {
-    const query = search.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-    let result = companies || [];
-    if (query) {
-      result = result.filter(c => {
-        const normalizedCompany = c.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return normalizedCompany.includes(query);
-      });
+  useEffect(() => {
+    const stringVal = String(value);
+    const match = stringVal.match(/^(\d+)(.*)$/);
+    if (!match) {
+      setDisplayValue(stringVal);
+      return;
     }
 
-    // Sort
-    return [...result].sort((a, b) => {
-      if (sort === 'az') 
-        return a.localeCompare(b);
-      if (sort === 'za') 
-        return b.localeCompare(a);
-      return 0;
-    });
-  }, [companies, search, sort]);
+    const endNumber = parseInt(match[1], 10);
+    const suffix = match[2] || '';
+    const startTime = performance.now();
+
+    const update = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = progress * (2 - progress);
+      const current = Math.floor(easeProgress * endNumber);
+      
+      setDisplayValue(`${current}${suffix}`);
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      } else {
+        setDisplayValue(stringVal);
+      }
+    };
+
+    requestAnimationFrame(update);
+  }, [value, duration]);
+
+  return <span>{displayValue}</span>;
+});
+
+// ─── Circular SVG Progress Ring ───────────────────────────────────────────────
+const CircularProgress = memo(function CircularProgress({ pct, size = 92, stroke = 7, color = ORANGE }) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={stroke} />
+      <motion.circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
+      />
+    </svg>
+  );
+});
+
+// ─── Gradient Progress Bar ────────────────────────────────────────────────────
+const GradientBar = memo(function GradientBar({ pct, color, delay = 0 }) {
+  return (
+    <div className="relative rounded-full overflow-hidden" style={{ height: 5, backgroundColor: '#1a1a1a' }}>
+      <motion.div
+        className="absolute inset-y-0 left-0 rounded-full"
+        style={{
+          background: pct > 0 ? `linear-gradient(90deg, ${color}90, ${color})` : 'transparent',
+        }}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.min(100, pct)}%` }}
+        transition={{ duration: 0.8, ease: 'easeOut', delay }}
+      />
+    </div>
+  );
+});
+
+// ─── Hero Stat Chip ───────────────────────────────────────────────────────────
+function StatChip({ label, value, accent }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[9px] font-black tracking-widest uppercase mb-1" style={{ color: '#4b5563' }}>
+        {label}
+      </span>
+      <div className="flex items-baseline gap-1">
+        <span className="font-black text-xl" style={{ color: accent || '#fff', letterSpacing: '-0.04em' }}>
+          <AnimatedCounter value={value} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Card Animation Variants ─────────────────────────────────────────────────
+const cardVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, delay: i * 0.02, ease: 'easeOut' },
+  }),
+};
+
+// ─── CompanyCard ─────────────────────────────────────────────────────────────
+const CompanyCard = memo(function CompanyCard({ companyName, questionCount, topTags, index, solvedCount }) {
+  const avatarStyle = getAvatarStyle(companyName.toUpperCase());
+  const isHot = HOT_COMPANIES.has(companyName.toLowerCase());
+  const pct = questionCount > 0 ? Math.round((solvedCount / questionCount) * 100) : 0;
+  const accentColor = isHot ? ORANGE : avatarStyle.color;
+  const displayName = formatCompanyName(companyName);
 
   return (
-    <div className="flex min-h-screen bg-[#07070F]" style={{ background: 'var(--bg-primary,#07070F)' }}>
-      {/* Sidebar */}
-      <Sidebar />
+    <motion.div
+      custom={index}
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      className="group relative flex flex-col rounded-2xl overflow-hidden"
+      style={{
+        backgroundColor: '#111111',
+        border: `1px solid ${isHot ? 'rgba(255,107,26,0.30)' : '#1e1e1e'}`,
+        boxShadow: isHot ? '0 0 20px rgba(255,107,26,0.06)' : 'none',
+        transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s, background-color 0.2s',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget;
+        el.style.borderColor = `${accentColor}50`;
+        el.style.boxShadow = `0 12px 32px rgba(0,0,0,0.35), 0 0 0 1px ${accentColor}22`;
+        el.style.transform = 'translateY(-3px)';
+        el.style.backgroundColor = `${accentColor}06`;
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget;
+        el.style.borderColor = isHot ? 'rgba(255,107,26,0.30)' : '#1e1e1e';
+        el.style.boxShadow = isHot ? '0 0 20px rgba(255,107,26,0.06)' : 'none';
+        el.style.transform = 'translateY(0)';
+        el.style.backgroundColor = '#111111';
+      }}
+    >
+      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: accentColor }} />
 
-      {/* Main Content Area */}
-      <main
-        className="flex-1 flex flex-col min-w-0"
-        style={{ marginLeft: SIDEBAR_W }}
+      <Link
+        to={`/company/${companyName.toLowerCase()}`}
+        className="flex flex-col h-full p-5 pt-6 gap-4"
+        style={{ textDecoration: 'none' }}
       >
-        {/* HEADER (sticky top-0, blur, border-bottom) */}
-        <header
-          className="sticky top-0 z-30 shrink-0 px-6 py-4 flex items-center justify-between border-b select-none"
-          style={{
-            background: 'rgba(7,7,15,0.85)',
-            backdropFilter: 'blur(12px)',
-            borderBottomColor: 'var(--border, rgba(255,255,255,0.06))'
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <Code2 size={20} className="text-[#FF7A00]" />
-            <h1 className="text-xl font-bold text-white">Company Questions</h1>
+        <div className="flex items-start justify-between">
+          <div className="relative">
+            <div
+              className="w-12 h-12 flex items-center justify-center rounded-xl select-none text-[20px] font-black"
+              style={{
+                backgroundColor: avatarStyle.bg,
+                color: avatarStyle.color,
+                border: `1px solid ${avatarStyle.border}`,
+              }}
+            >
+              {companyName[0].toUpperCase()}
+            </div>
+            {isHot && (
+              <span
+                className="absolute -top-1.5 -right-1.5 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase"
+                style={{ backgroundColor: '#1a0800', color: ORANGE, border: '1px solid rgba(255,107,26,0.25)' }}
+              >
+                🔥 HOT
+              </span>
+            )}
           </div>
+
           <span
-            className="text-xs font-semibold px-2.5 py-1 rounded-full select-none"
-            style={{
-              background: 'var(--bg-hover, #141428)',
-              color: 'var(--text-3, #475569)',
-              border: '1px solid var(--border, rgba(255,255,255,0.06))'
-            }}
+            className="text-[10px] font-semibold rounded-lg px-2.5 py-1"
+            style={{ backgroundColor: '#1a1a1a', border: '1px solid #222', color: '#4b5563' }}
           >
-            {companies.length} companies
+            {questionCount} Qs
           </span>
-        </header>
+        </div>
 
-        {/* SEARCH + SORT BAR (px-6 py-4) */}
-        <div className="px-6 py-4 flex gap-3 items-center select-none">
-          {/* Search input (flex-1) */}
-          <div className="relative flex-1 min-w-0">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search companies..."
-              className="w-full pl-10 py-2.5 pr-4 rounded-xl text-sm outline-none transition-colors border text-white"
-              style={{
-                background: 'var(--bg-card, #0F0F1A)',
-                borderColor: 'var(--border, rgba(255,255,255,0.06))',
-              }}
-              onFocus={(e) => { e.target.style.borderColor = 'rgba(249,115,22,0.4)'; }}
-              onBlur={(e) => { e.target.style.borderColor = 'var(--border, rgba(255,255,255,0.06))'; }}
-            />
-          </div>
-
-          {/* Sort pills (flex gap-2) */}
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={() => setSort('az')}
-              className={`cursor-pointer px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                sort === 'az'
-                  ? 'text-black'
-                  : 'text-gray-400 border'
-              }`}
-              style={{
-                background: sort === 'az' ? '#FF7A00' : 'var(--bg-card, #0F0F1A)',
-                borderColor: sort === 'az' ? 'transparent' : 'var(--border, rgba(255,255,255,0.06))'
-              }}
-            >
-              A-Z
-            </button>
-            <button
-              onClick={() => setSort('za')}
-              className={`cursor-pointer px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                sort === 'za'
-                  ? 'text-black'
-                  : 'text-gray-400 border'
-              }`}
-              style={{
-                background: sort === 'za' ? '#FF7A00' : 'var(--bg-card, #0F0F1A)',
-                borderColor: sort === 'za' ? 'transparent' : 'var(--border, rgba(255,255,255,0.06))'
-              }}
-            >
-              Z-A
-            </button>
+        <div className="flex-1 space-y-2">
+          <h3 className="text-white font-black text-[15px] leading-tight capitalize truncate">
+            {displayName}
+          </h3>
+          <div className="flex flex-wrap gap-1">
+            {topTags.map((tag) => (
+              <span
+                key={tag}
+                className="text-[10px] px-2 py-0.5 rounded-md"
+                style={{ backgroundColor: '#1a1a1a', color: '#6b7280', border: '1px solid #222' }}
+              >
+                {tag}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* COMPANIES GRID (px-6 pb-8) */}
-        <div className="px-6 pb-8 flex-1 overflow-y-auto">
-          {/* LOADING STATE */}
-          {isLoading && (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {[...Array(12)].map((_, i) => (
-                <div
-                  key={i}
-                  className="animate-pulse p-5 border"
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-[10px] font-semibold">
+            <span style={{ color: '#4b5563' }}>{solvedCount} / {questionCount} solved</span>
+            <span style={{ color: accentColor }} className="font-bold">{pct}%</span>
+          </div>
+          <GradientBar pct={pct} color={accentColor} delay={index * 0.02 + 0.1} />
+        </div>
+
+        <div
+          className="w-full text-center text-[12px] font-bold rounded-xl py-2.5 transition-all duration-200"
+          style={{
+            backgroundColor: `${accentColor}12`,
+            border: `1px solid ${accentColor}30`,
+            color: accentColor,
+          }}
+        >
+          Practice Questions →
+        </div>
+      </Link>
+    </motion.div>
+  );
+});
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function DSAPractice() {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [sortDir, setSortDir] = useState('asc');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [isFocused, setIsFocused] = useState(false);
+  const searchRef = useRef(null);
+
+  const { user } = useAppSelector((state) => state.auth);
+
+  // Fetch enriched companies meta from API
+  const { data: companiesMeta, isLoading, isError } = useQuery({
+    queryKey: ['companies-meta'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/api/companies/meta');
+        return res.data;
+      } catch {
+        const res = await apiClient.get('/api/companies');
+        return (res.data || []).map(name => ({ name, questionCount: 15, topTags: [] }));
+      }
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const getCompanySolvedCount = useCallback((companyName) => {
+    if (!user || !user.solvedQuestions) return 0;
+    const targetContext = `company_${companyName.toLowerCase()}`;
+    return user.solvedQuestions.filter(sq => sq.syncContext === targetContext).length;
+  }, [user]);
+
+  // Debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimer = useRef(null);
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearch(val);
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => setDebouncedSearch(val), 300);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!companiesMeta) return [];
+    const q = debouncedSearch.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+    let list = companiesMeta;
+
+    if (q) {
+      list = list.filter(c => {
+        const key = c.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return key.includes(q);
+      });
+    }
+
+    if (activeFilter !== 'all') {
+      list = list.filter(c => matchesFilter(c.name, activeFilter));
+    }
+
+    const sorted = [...list].sort((a, b) => {
+      const cmp = a.name.localeCompare(b.name);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return sorted;
+  }, [companiesMeta, debouncedSearch, activeFilter, sortDir]);
+
+  const visible = filtered.slice(0, visibleCount);
+  const totalCount = companiesMeta?.length || 0;
+  const hasMore = visibleCount < filtered.length;
+
+  const summary = useMemo(() => {
+    if (!companiesMeta) return { totalQuestions: 0, totalSolved: 0, pct: 0 };
+    let totalQuestions = 0;
+    let totalSolved = 0;
+
+    for (const c of companiesMeta) {
+      totalQuestions += Number(c.questionCount) || 0;
+      totalSolved += getCompanySolvedCount(c.name);
+    }
+
+    const pct = totalQuestions > 0 ? Math.round((totalSolved / totalQuestions) * 100) : 0;
+    return { totalQuestions, totalSolved, pct };
+  }, [companiesMeta, getCompanySolvedCount]);
+
+  return (
+    <div className="min-h-screen text-white antialiased" style={{ backgroundColor: '#0A0A0A' }}>
+      <Sidebar />
+
+      <div className="flex flex-col min-h-screen" style={{ marginLeft: SIDEBAR_W }}>
+        {/* ════════════════════════════════════════════════════════════
+            HERO HEADER
+            ════════════════════════════════════════════════════════════ */}
+        <header className="px-10 pt-10 pb-10" style={{ borderBottom: '1px solid #141414' }}>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 mb-7">
+            <FaBuilding size={12} style={{ color: ORANGE }} />
+            <span className="text-[11px] font-semibold tracking-widest uppercase" style={{ color: '#4b5563' }}>
+              Company Preparation
+            </span>
+          </div>
+
+          {/* Title + glass stats panel */}
+          <div className="flex flex-col xl:flex-row xl:items-center gap-8">
+            {/* Left description */}
+            <div className="flex-1 space-y-3">
+              <motion.h1
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="font-black leading-none tracking-tight"
+                style={{
+                  fontSize: 'clamp(36px, 3.8vw, 52px)',
+                  color: '#ffffff',
+                  letterSpacing: '-0.035em',
+                }}
+              >
+                Company
+                <span style={{ color: ORANGE }}> Questions</span>
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.08 }}
+                className="text-[15px] font-normal max-w-lg"
+                style={{ color: '#6b7280', lineHeight: 1.65 }}
+              >
+                Practice the most frequently asked interview questions from top companies. Filter by category, search names, and track your metrics.
+              </motion.p>
+
+              {/* Progress bar */}
+              {!isLoading && !isError && companiesMeta && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="pt-2 max-w-lg space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black tracking-widest uppercase" style={{ color: '#4b5563' }}>
+                      Overall Progress
+                    </span>
+                    <span className="text-[11px] font-bold" style={{ color: ORANGE }}>
+                      {summary.pct}% Complete
+                    </span>
+                  </div>
+                  <div className="relative rounded-full overflow-hidden" style={{ height: 6, backgroundColor: '#1a1a1a' }}>
+                    <motion.div
+                      className="absolute inset-y-0 left-0 rounded-full"
+                      style={{
+                        background: `linear-gradient(90deg, ${ORANGE}80, ${ORANGE})`,
+                      }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${summary.pct}%` }}
+                      transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Right: Glass stats card */}
+            {!isLoading && !isError && companiesMeta && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: 0.15 }}
+                className="flex-shrink-0 relative rounded-2xl overflow-hidden"
+                style={{
+                  backgroundColor: '#111111',
+                  border: '1px solid #1e1e1e',
+                  boxShadow: '0 0 0 1px rgba(255,107,26,0.06), 0 20px 40px rgba(0,0,0,0.3)',
+                  minWidth: '380px',
+                }}
+              >
+                {/* Top accent line */}
+                <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: ORANGE }} />
+
+                <div className="px-7 py-6">
+                  <div className="flex items-center gap-6 mb-6">
+                    <div className="relative flex-shrink-0">
+                      <CircularProgress pct={summary.pct} size={92} stroke={7} color={ORANGE} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="font-black text-white" style={{ fontSize: '20px', letterSpacing: '-0.04em' }}>
+                          <AnimatedCounter value={summary.pct} />%
+                        </span>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#4b5563' }}>
+                          done
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-black text-white mb-0.5" style={{ fontSize: '15px', letterSpacing: '-0.02em' }}>
+                        {summary.totalSolved === 0 ? 'Just getting started' : `${summary.totalSolved} solved so far`}
+                      </p>
+                      <p className="text-[12px]" style={{ color: '#6b7280' }}>
+                        {summary.totalQuestions - summary.totalSolved} questions remaining across all tech entities
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Summary metric cells */}
+                  <div
+                    className="grid grid-cols-3 gap-y-5 gap-x-2"
+                    style={{ borderTop: '1px solid #1a1a1a', paddingTop: '20px' }}
+                  >
+                    <StatChip label="Total Companies" value={totalCount} />
+                    <StatChip label="Questions" value={summary.totalQuestions} />
+                    <StatChip label="Solved" value={summary.totalSolved} accent={ORANGE} />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </header>
+
+        {/* ════════════════════════════════════════════════════════════
+            SEARCH, FILTERS AND COMPANY GRID
+            ════════════════════════════════════════════════════════════ */}
+        <main className="flex-1 px-10 py-8 space-y-6">
+          {/* ════════════════════════════════════════════════════════════
+              SEARCH, FILTERS AND SORTING TOOLBAR
+              ════════════════════════════════════════════════════════════ */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 mb-8">
+            {/* Search Input Container */}
+            <div
+              className="flex items-center gap-3.5 rounded-2xl px-6 transition-all duration-200 flex-1 min-w-[280px]"
+              style={{
+                backgroundColor: '#141414',
+                border: isFocused ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
+                boxShadow: isFocused ? '0 0 24px rgba(255,107,26,0.15), 0 8px 32px rgba(0,0,0,0.4)' : 'none',
+                transform: isFocused ? 'translateY(-1px)' : 'none',
+                height: '56px',
+              }}
+            >
+              <FaSearch size={14} style={{ color: isFocused ? ORANGE : '#4b5563', flexShrink: 0, transition: 'color 0.2s' }} />
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={handleSearchChange}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                placeholder="Search tech companies..."
+                className="bg-transparent flex-1 outline-none text-[14px] text-white placeholder-[#4b5563]"
+                style={{
+                  border: 'none',
+                  padding: 0,
+                  outline: 'none',
+                  boxShadow: 'none',
+                  background: 'transparent',
+                }}
+              />
+              {search && (
+                <button
+                  onClick={() => { setSearch(''); setDebouncedSearch(''); }}
+                  className="text-[#4b5563] hover:text-[#9ca3af] transition-colors text-lg leading-none bg-transparent border-none cursor-pointer"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+              {/* Sort pill toggles */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setSortDir('asc')}
+                  className="text-[12px] font-bold px-4 py-2 rounded-xl transition-all duration-150 cursor-pointer"
                   style={{
-                    background: 'var(--bg-card, #0F0F1A)',
-                    borderColor: 'var(--border, rgba(255,255,255,0.06))',
-                    borderRadius: '12px'
+                    backgroundColor: sortDir === 'asc' ? ORANGE : '#111111',
+                    border: sortDir === 'asc' ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
+                    color: sortDir === 'asc' ? '#fff' : '#4b5563',
                   }}
                 >
-                  <div
-                    className="w-10 h-10 rounded-xl"
-                    style={{ background: 'var(--bg-hover, #141428)' }}
-                  />
-                  <div
-                    className="h-3 rounded mt-3"
-                    style={{ background: 'var(--bg-hover, #141428)' }}
-                  />
-                  <div
-                    className="h-2 rounded mt-2 w-2/3"
-                    style={{ background: 'var(--bg-hover, #141428)' }}
-                  />
-                </div>
+                  Sort A-Z
+                </button>
+                <button
+                  onClick={() => setSortDir('desc')}
+                  className="text-[12px] font-bold px-4 py-2 rounded-xl transition-all duration-150 cursor-pointer"
+                  style={{
+                    backgroundColor: sortDir === 'desc' ? ORANGE : '#111111',
+                    border: sortDir === 'desc' ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
+                    color: sortDir === 'desc' ? '#fff' : '#4b5563',
+                  }}
+                >
+                  Sort Z-A
+                </button>
+              </div>
+            </div>
+
+          {/* Skeletons loader */}
+          {isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl p-5 animate-pulse"
+                  style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', height: '190px' }}
+                />
               ))}
             </div>
           )}
 
-          {/* ERROR STATE */}
-          {!isLoading && isError && (
-            <div className="flex items-center justify-center py-20 text-center">
-              <span className="text-red-400 text-sm font-semibold">Failed to load companies</span>
+          {/* Error view */}
+          {isError && (
+            <div
+              className="text-center py-16 rounded-2xl space-y-2"
+              style={{ border: '1px dashed #1e1e1e', color: '#6b7280' }}
+            >
+              <p className="text-[16px] font-bold text-white mb-1">Failed to load company questions</p>
+              <p className="text-[13px]">There was an error communicating with the server. Please reload the page.</p>
             </div>
           )}
 
-          {/* EMPTY SEARCH STATE */}
+          {/* Empty search state */}
           {!isLoading && !isError && filtered.length === 0 && (
-            <div className="text-center py-20 bg-[#0D0D12]/40 border border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center p-6 max-w-lg mx-auto mt-12">
-              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gray-400 mb-4 border border-white/5">
-                <Search size={18} />
-              </div>
-              <h3 className="text-white font-bold text-sm mb-1">No companies found</h3>
-              <p className="text-gray-500 text-xs leading-relaxed max-w-xs">
-                We couldn't find any companies matching "{search}". Try searching for another keyword or check for spelling errors.
-              </p>
-            </div>
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center justify-center py-24 text-center"
+              >
+                <div className="text-5xl mb-4 select-none">🔍</div>
+                <p className="text-white text-[17px] font-bold mb-1">No matches found</p>
+                <p className="text-[13px]" style={{ color: '#4b5563' }}>
+                  {debouncedSearch
+                    ? 'No companies found with that query.'
+                    : 'No matches found in the selected category.'}
+                </p>
+              </motion.div>
+            </AnimatePresence>
           )}
 
-          {/* COMPANY CARDS */}
+          {/* Grid layout */}
           {!isLoading && !isError && filtered.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              {filtered.map((company, index) => {
-                const color = getAvatarColor(company);
-                const displayNameStr = formatName(company);
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {visible.map((company, i) => {
+                  const companyName = company?.name || '';
+                  return (
+                    <CompanyCard
+                      key={companyName}
+                      companyName={companyName}
+                      questionCount={company?.questionCount || 0}
+                      topTags={getTopTags(companyName, company?.topTags)}
+                      index={i}
+                      solvedCount={getCompanySolvedCount(companyName)}
+                    />
+                  );
+                })}
+              </div>
 
-                return (
-                  <motion.div
-                    key={company}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.03, ease: 'easeOut' }}
-                    whileHover={{
-                      y: -3,
-                      boxShadow: '0 8px 24px rgba(249,115,22,0.1)'
-                    }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => navigate(`/company/${company}`)}
-                    className="group border cursor-pointer select-none transition-all duration-200"
+              {/* Load More section */}
+              <div className="flex flex-col items-center gap-3 pt-6">
+                <p className="text-[13px]" style={{ color: '#4b5563' }}>
+                  Showing <span className="text-white font-semibold">{visible.length}</span> of{' '}
+                  <span className="text-white font-semibold">{filtered.length}</span> entities
+                </p>
+                {hasMore && (
+                  <button
+                    onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+                    className="text-[12px] font-bold px-6 py-3 rounded-xl transition-all duration-200 cursor-pointer"
                     style={{
-                      background: 'var(--bg-card, #0F0F1A)',
-                      borderColor: 'var(--border, rgba(255,255,255,0.06))',
-                      borderRadius: '12px',
-                      padding: '20px'
+                      backgroundColor: '#111111',
+                      border: '1px solid #1e1e1e',
+                      color: '#9ca3af',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.3)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border, rgba(255,255,255,0.06))'; }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = ORANGE;
+                      e.currentTarget.style.color = '#fff';
+                      e.currentTarget.style.backgroundColor = `${ORANGE}08`;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = '#1e1e1e';
+                      e.currentTarget.style.color = '#9ca3af';
+                      e.currentTarget.style.backgroundColor = '#111111';
+                    }}
                   >
-                    {/* Avatar circle */}
-                    <div
-                      className="w-10 h-10 flex items-center justify-center font-bold text-lg select-none"
-                      style={{
-                        borderRadius: '10px',
-                        background: `${color}20`,
-                        border: `1px solid ${color}40`,
-                        color: color
-                      }}
-                    >
-                      {displayNameStr.charAt(0)}
-                    </div>
-
-                    {/* Company name */}
-                    <h3 className="mt-3 font-semibold text-sm text-white">
-                      {displayNameStr}
-                    </h3>
-
-                    {/* Practice → text */}
-                    <p className="mt-1 text-xs text-gray-500 transition-colors duration-150 group-hover:text-orange-400">
-                      Practice &rarr;
-                    </p>
-                  </motion.div>
-                );
-              })}
-            </div>
+                    Load More Companies
+                  </button>
+                )}
+              </div>
+            </>
           )}
-        </div>
-      </main>
+        </main>
+
+        {/* Footer */}
+        <footer className="px-10 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #141414' }}>
+          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>
+            © 2024 CodePrep — Company Questions
+          </span>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: '#2a2a2a' }}>
+            <FaTrophy size={10} style={{ color: ORANGE }} />
+            Solve company questions to prepare for target interviews
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

@@ -1,21 +1,23 @@
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion, animate } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
+import { FaArrowRight } from "react-icons/fa6";
 import {
   FaCode as Code2, FaBookmark as Bookmark, FaCalendar as Calendar,
-  FaArrowRight as ArrowRight, FaExternalLinkAlt as ExternalLink, FaCodeBranch as GitBranch,
-  FaCheckCircle as CheckCircle2, FaExclamationCircle as AlertCircle, FaSpinner as Loader2,
-  FaGithub as Github, FaFire as Flame, FaPuzzlePiece
+  FaArrowRight as ArrowRight, FaExternalLinkAlt as ExternalLink,
+  FaCheckCircle as CheckCircle2, FaExclamationCircle as AlertCircle,
+  FaSpinner as Loader2, FaGithub as Github, FaFire as Flame, FaPuzzlePiece
 } from 'react-icons/fa';
-import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axios';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import Sidebar from '../components/dashboard/Sidebar';
 import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 
-/* ─────────────────────────────────────────────
-   Helpers
-───────────────────────────────────────────── */
+// ─── Design tokens (match GVChallenge & GitHub Integration) ───────────────────
+const SIDEBAR_W = 220;
+const ORANGE = '#FF6B1A';
+
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -24,7 +26,7 @@ function getGreeting() {
 }
 
 function formatLastActive(dateStr) {
-  if (!dateStr) return 'Not started';
+  if (!dateStr) return 'Not active';
   const d = new Date(dateStr);
   const now = new Date();
   const todayStr = now.toDateString();
@@ -38,107 +40,117 @@ function formatLastActive(dateStr) {
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
-  const mins  = Math.floor(diff / 60000);
+  const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
-  const days  = Math.floor(diff / 86400000);
-  if (mins  < 60)  return `${mins || 1}m ago`;
-  if (hours < 24)  return `${hours}h ago`;
-  if (days  < 7)   return `${days}d ago`;
+  const days = Math.floor(diff / 86400000);
+  if (mins < 60) return `${mins || 1}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function diffColor(difficulty) {
   if (!difficulty) return '#94A3B8';
   const d = difficulty.toLowerCase();
-  if (d === 'easy')   return '#4ade80';
+  if (d === 'easy') return '#22c55e';
   if (d === 'medium') return '#fbbf24';
-  return '#f87171';
+  return '#ef4444';
 }
 
-/* ─────────────────────────────────────────────
-   Animated counter hook
-───────────────────────────────────────────── */
-function AnimatedNumber({ value, className }) {
-  const ref   = useRef(null);
-  const mvRef = useRef(null);
+// ─── Animated Counter Component ───────────────────────────────────────────────
+const AnimatedCounter = memo(function AnimatedCounter({ value, duration = 800 }) {
+  const [displayValue, setDisplayValue] = useState('0');
 
   useEffect(() => {
-    const ctrl = animate(0, value, {
-      duration: 1.2,
-      ease: 'easeOut',
-      onUpdate: (v) => {
-        if (ref.current) ref.current.textContent = Math.round(v).toLocaleString();
-      },
-    });
-    return () => ctrl.stop();
-  }, [value]);
+    const stringVal = String(value);
+    const match = stringVal.match(/^(\d+)(.*)$/);
+    if (!match) {
+      setDisplayValue(stringVal);
+      return;
+    }
 
-  return <span ref={ref} className={className}>0</span>;
-}
+    const endNumber = parseInt(match[1], 10);
+    const suffix = match[2] || '';
+    const startTime = performance.now();
 
-/* ─────────────────────────────────────────────
-   Stat Card
-───────────────────────────────────────────── */
-function StatCard({ icon: Icon, label, sublabel, value, isString, color, dot }) {
+    const update = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = progress * (2 - progress);
+      const current = Math.floor(easeProgress * endNumber);
+
+      setDisplayValue(`${current}${suffix}`);
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      } else {
+        setDisplayValue(stringVal);
+      }
+    };
+
+    requestAnimationFrame(update);
+  }, [value, duration]);
+
+  return <span>{displayValue}</span>;
+});
+
+// ─── Stat Card ─────────────────────────────────────────────────────────────
+function StatCard({ icon: Icon, label, sublabel, value, isString, color, dot, delay = 0 }) {
   return (
     <motion.div
-      whileHover={{ y: -2, borderColor: 'var(--border-hover, rgba(255,255,255,0.12))' }}
-      transition={{ duration: 0.2 }}
-      className="rounded-xl p-5 transition-all"
-      style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay, ease: 'easeOut' }}
+      className="flex items-center gap-4 rounded-xl px-5 py-4"
+      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = 'rgba(255,107,26,0.25)';
+        e.currentTarget.style.boxShadow = '0 0 20px rgba(255,107,26,0.05)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = '#1e1e1e';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
     >
-      <div className="flex items-center justify-between">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center"
-          style={{ background: `${color}18`, border: `1px solid ${color}30` }}
-        >
-          <Icon size={17} style={{ color }} />
-        </div>
-        <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: dot || color }} />
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ backgroundColor: `${color}18`, color, border: `1px solid ${color}30` }}
+      >
+        <Icon size={16} />
       </div>
-
-      <div className="mt-4">
-        {isString ? (
-          <p className="text-2xl font-extrabold leading-tight" style={{ color: 'var(--text-1, #F1F5F9)' }}>
-            {value}
-          </p>
-        ) : (
-          <AnimatedNumber
-            value={typeof value === 'number' ? value : 0}
-            className="text-2xl font-extrabold leading-tight"
-          />
-        )}
-        <p className="text-sm font-medium mt-1" style={{ color: 'var(--text-2, #94A3B8)' }}>{label}</p>
-        <p className="text-xs mt-0.5"        style={{ color: 'var(--text-3, #475569)'  }}>{sublabel}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-black tracking-widest uppercase" style={{ color: '#4b5563' }}>
+          {label}
+        </p>
+        <div className="flex items-baseline gap-1.5 mt-0.5">
+          <span className="text-xl font-black text-white truncate" style={{ letterSpacing: '-0.04em' }}>
+            {isString ? value : <AnimatedCounter value={value} />}
+          </span>
+          <span className="text-[10px]" style={{ color: '#4b5563' }}>{sublabel}</span>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   Animated progress bar
-───────────────────────────────────────────── */
-function ProgressBar({ pct }) {
+// ─── Gradient Progress Bar ────────────────────────────────────────────────────
+const GradientBar = memo(function GradientBar({ pct }) {
   return (
-    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: 'var(--bg-hover, #141428)' }}>
+    <div className="relative rounded-full overflow-hidden w-full" style={{ height: 4, backgroundColor: '#1a1a1a' }}>
       <motion.div
+        className="absolute inset-y-0 left-0 rounded-full bg-[#FF6B1A]"
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(pct, 100)}%` }}
-        transition={{ duration: 1.1, ease: 'easeOut', delay: 0.3 }}
-        className="h-full rounded-full"
-        style={{ background: 'linear-gradient(90deg, var(--orange,#F97316), var(--orange-dim,#fbbf24))' }}
+        transition={{ duration: 0.8, ease: 'easeOut' }}
       />
     </div>
   );
-}
+});
 
-
-
-/* ─────────────────────────────────────────────
-   New-user welcome state
-───────────────────────────────────────────── */
+// ─── New User Welcome ────────────────────────────────────────────────────────
 const TOP_COMPANIES = [
-  { name: 'Google',    color: '#4285F4' },
-  { name: 'Amazon',    color: '#FF9900' },
+  { name: 'Google', color: '#4285F4' },
+  { name: 'Amazon', color: '#FF9900' },
   { name: 'Microsoft', color: '#00A4EF' },
 ];
 
@@ -152,113 +164,145 @@ function NewUserWelcome({ user }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2 }}
-      className="max-w-2xl mx-auto mt-8 rounded-2xl p-10 text-center"
-      style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+      transition={{ duration: 0.4 }}
+      className="max-w-2xl mx-auto mt-8 rounded-2xl p-8 text-center relative"
+      style={{
+        backgroundColor: '#111111',
+        border: '1px solid #1e1e1e',
+        boxShadow: '0 0 0 1px rgba(255,107,26,0.06), 0 20px 40px rgba(0,0,0,0.3)',
+      }}
     >
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
-        style={{ background: 'var(--orange-dim, rgba(249,115,22,0.12))', border: '1px solid var(--orange-glow, rgba(249,115,22,0.2))' }}
+      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: ORANGE }} />
+
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
+        style={{ backgroundColor: 'rgba(255,107,26,0.1)', border: '1px solid rgba(255,107,26,0.25)' }}
       >
-        <Code2 size={28} style={{ color: 'var(--orange, #F97316)' }} />
+        <Code2 size={24} style={{ color: ORANGE }} />
       </div>
 
-      <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-1, #F1F5F9)' }}>
+      <h2 className="text-2xl font-black text-white mb-2" style={{ letterSpacing: '-0.03em' }}>
         Welcome, {user?.name?.split(' ')[0] || 'Engineer'}! 👋
       </h2>
-      <p className="text-sm mb-8 leading-relaxed" style={{ color: 'var(--text-2, #94A3B8)' }}>
-        Pick a company to kick off your interview prep journey.
+      <p className="text-sm mb-8 max-w-md mx-auto" style={{ color: '#6b7280', lineHeight: 1.6 }}>
+        Start your coding prep path. Pick a top tech giant below or browse all companies to begin solving questions.
       </p>
 
-      <div className="grid grid-cols-3 gap-3 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         {TOP_COMPANIES.map((co) => (
-          <motion.button
+          <button
             key={co.name}
-            whileHover={{ y: -3, borderColor: 'rgba(249,115,22,0.3)' }}
-            whileTap={{ scale: 0.97 }}
             onClick={() => navigate('/company/' + co.name.toLowerCase())}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl cursor-pointer transition-all"
-            style={{ background: 'var(--bg-hover, #141428)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+            className="flex flex-col items-center gap-2.5 p-4 rounded-xl cursor-pointer transition-all duration-200"
+            style={{ backgroundColor: '#0d0d0d', border: '1px solid #1c1c1c' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'rgba(255,107,26,0.3)';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = '#1c1c1c';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
           >
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white text-lg"
-              style={{ background: co.color }}
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white text-base"
+              style={{ backgroundColor: co.color }}
             >
               {co.name[0]}
             </div>
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-1, #F1F5F9)' }}>{co.name}</span>
-            <span className="text-xs" style={{ color: 'var(--text-3, #475569)' }}>
-              {companiesData ? 'Questions →' : '...'}
+            <span className="text-xs font-bold text-white leading-none">{co.name}</span>
+            <span className="text-[10px]" style={{ color: '#4b5563' }}>
+              {companiesData ? 'Questions →' : 'Loading...'}
             </span>
-          </motion.button>
+          </button>
         ))}
       </div>
 
       <button
         onClick={() => navigate('/dashboard/dsa')}
-        className="cursor-pointer w-full py-3 rounded-xl font-semibold text-black flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-        style={{ background: 'linear-gradient(135deg, var(--orange,#F97316), var(--secondary,#FFB800))' }}
+        className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-all flex items-center justify-center gap-2"
+        style={{
+          background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)`,
+          border: 'none',
+          boxShadow: '0 4px 16px rgba(255,107,26,0.25)',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(255,107,26,0.4)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(255,107,26,0.25)';
+        }}
       >
-        Browse All Companies <ArrowRight size={16} />
+        Browse All Companies <FaArrowRight size={12} />
       </button>
     </motion.div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   GV Challenge promo card
-───────────────────────────────────────────── */
+// ─── GV Challenge promo card ─────────────────────────────────────────────
 function GVChallengeCard({ streak }) {
   const navigate = useNavigate();
   return (
-    <div className="rounded-xl p-5 h-full"
+    <div
+      className="rounded-2xl p-5 relative overflow-hidden"
       style={{
-        background:  'linear-gradient(135deg, var(--bg-card,#0F0F1A), var(--bg-hover,#141428))',
-        border:      '1px solid var(--orange-dim, rgba(249,115,22,0.15))',
+        backgroundColor: '#111111',
+        border: '1px solid rgba(255,107,26,0.18)',
+        boxShadow: '0 0 24px rgba(255,107,26,0.04)',
       }}
     >
-      <span className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-5"
-        style={{ background: 'var(--orange-dim,rgba(249,115,22,0.12))', color: 'var(--orange,#F97316)' }}
-      >
-        🏆 GV Challenge
-      </span>
+      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: ORANGE }} />
 
-      <p className="font-semibold mb-2 leading-snug" style={{ color: 'var(--text-1,#F1F5F9)' }}>
-        Daily DSA. Tracked.
+      <div className="flex items-center justify-between mb-4">
+        <span
+          className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded-md uppercase"
+          style={{ backgroundColor: 'rgba(255,107,26,0.1)', color: ORANGE, border: '1px solid rgba(255,107,26,0.25)' }}
+        >
+          🏆 GV Challenge
+        </span>
+
+        {/* Streak */}
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-black text-white">
+            🔥 {streak?.current || 0}
+          </span>
+          <span className="text-[9px] uppercase font-bold" style={{ color: '#4b5563' }}>streak</span>
+        </div>
+      </div>
+
+      <h4 className="font-black text-white text-[15px] mb-1.5 leading-snug" style={{ letterSpacing: '-0.02em' }}>
+        Daily DSA. Auto-Backed.
+      </h4>
+      <p className="text-[12px] mb-4 leading-relaxed" style={{ color: '#6b7280' }}>
+        Solve one curated question daily. accepted solutions auto-sync directly to your connected GitHub repositories.
       </p>
-      <p className="text-xs mb-4" style={{ color: 'var(--text-3,#475569)' }}>
-        Solve one question daily. CodePrep auto-syncs accepted solutions to GitHub.
-      </p>
+
       <button
         onClick={() => navigate('/dashboard/gvchallenge')}
-        className="cursor-pointer w-full py-2.5 rounded-lg font-semibold text-black text-sm transition-opacity hover:opacity-90"
-        style={{ background: 'linear-gradient(135deg, var(--orange,#F97316), var(--secondary,#FFB800))' }}
+        className="w-full py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-200"
+        style={{
+          background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)`,
+          border: 'none',
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(255,107,26,0.2)',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.boxShadow = '0 6px 18px rgba(255,107,26,0.3)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(255,107,26,0.2)';
+        }}
       >
-        Start Today's Challenge →
+        Start Today's Challenge
       </button>
-
-      {/* Streak */}
-      <div className="mt-5 text-center">
-        <p
-          className="text-4xl font-black leading-none"
-          style={{
-            background: 'linear-gradient(135deg, #F97316, #EA580C)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
-          🔥 {streak?.current || 0}
-        </p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-3, #475569)' }}>day streak</p>
-      </div>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   Extension Status Widget
-───────────────────────────────────────────── */
+// ─── Extension Status Widget ─────────────────────────────────────────────
 function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
   const navigate = useNavigate();
   const { user } = useAppSelector((s) => s.auth);
@@ -272,133 +316,127 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
   const githubConnected = user?.githubConnected || false;
   const recentSubmissions = data?.recentSubmissions || [];
 
-  // 1. Last sync details
   const lastSyncedTitle = recentSubmissions[0]?.questionTitle || 'None';
-  const lastSyncedTime = recentSubmissions[0]?.submittedAt 
-    ? timeAgo(recentSubmissions[0]?.submittedAt) 
+  const lastSyncedTime = recentSubmissions[0]?.submittedAt
+    ? timeAgo(recentSubmissions[0]?.submittedAt)
     : 'Never';
 
-  // 2. Auto Sync Status logic
-  let autoSyncStatusText = 'Ready ✅';
+  let autoSyncStatusText = 'Ready';
   let autoSyncStatusClass = 'bg-green-500/10 text-green-400 border border-green-500/20';
-  
+
   if (!extensionConnected) {
-    autoSyncStatusText = 'Extension Missing ❌';
+    autoSyncStatusText = 'Extension Inactive';
     autoSyncStatusClass = 'bg-red-500/10 text-red-400 border border-red-500/20';
   } else if (!githubConnected) {
-    autoSyncStatusText = 'Waiting Login ⚠️';
+    autoSyncStatusText = 'Setup Incomplete';
     autoSyncStatusClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
   }
 
-  // 3. GitHub repository link
   const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
 
   return (
     <div
-      className="rounded-xl p-5 transition-all space-y-4"
-      style={{ background: 'var(--bg-card, #0F0F1A)', border: '1px solid var(--border, rgba(255,255,255,0.06))' }}
+      className="rounded-2xl p-5 space-y-4"
+      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="text-white font-extrabold text-sm flex items-center gap-2">
-          <FaPuzzlePiece className="text-[#FF7A00]" size={15} /> Extension Status
+      <div className="flex items-center justify-between border-b border-[#1e1e1e] pb-3.5">
+        <h3 className="text-white font-black text-sm flex items-center gap-2">
+          <FaPuzzlePiece className="text-[#FF6B1A]" size={14} /> Extension Status
         </h3>
-        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${autoSyncStatusClass}`}>
+        <span className={`inline-flex items-center text-[9px] font-black tracking-wider px-2 py-0.5 rounded-lg uppercase ${autoSyncStatusClass}`}>
           {autoSyncStatusText}
         </span>
       </div>
 
-      {/* Warnings */}
+      {/* Warning Banners */}
       {!extensionConnected && (
-        <div className="bg-red-950/20 border border-red-950/50 text-red-400 rounded-xl p-3 text-[11px] leading-relaxed">
-          ⚠️ Auto-sync is inactive. Please install or enable the extension.
+        <div
+          className="rounded-xl p-3 text-[11px] leading-relaxed"
+          style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444' }}
+        >
+          Auto-sync is inactive. Please install or enable the LeetCode Companion Extension to sync progress.
         </div>
       )}
       {extensionConnected && !githubConnected && (
-        <div className="bg-amber-950/20 border border-amber-950/50 text-amber-400 rounded-xl p-3 text-[11px] leading-relaxed">
-          ⚠️ Connect GitHub in settings to backup your code.
+        <div
+          className="rounded-xl p-3 text-[11px] leading-relaxed"
+          style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', color: '#f59e0b' }}
+        >
+          Connect your GitHub account in configuration settings to trigger automatic backups.
         </div>
       )}
 
-      {/* Status Indicators */}
+      {/* Status Details */}
       <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500 font-medium">Extension Installed</span>
+          <span className="font-semibold" style={{ color: '#4b5563' }}>Extension Installed</span>
           {extensionConnected ? (
-            <span className="text-green-400 font-bold flex items-center gap-1">
-              Connected ✅
-            </span>
+            <span className="text-green-400 font-bold">Connected ✓</span>
           ) : (
-            <span className="text-red-400 font-bold flex items-center gap-1">
-              Not Connected ❌
-            </span>
+            <span className="text-red-400 font-bold">Not Connected ✗</span>
           )}
         </div>
 
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500 font-medium">GitHub Status</span>
+          <span className="font-semibold" style={{ color: '#4b5563' }}>GitHub Integration</span>
           {githubConnected ? (
-            <span className="text-green-400 font-bold flex items-center gap-1">
-              Connected ✅
-            </span>
+            <span className="text-green-400 font-bold">Connected ✓</span>
           ) : (
-            <span className="text-red-400 font-bold flex items-center gap-1">
-              Not Connected ❌
-            </span>
+            <span className="text-red-400 font-bold">Not Connected ✗</span>
           )}
         </div>
       </div>
 
-      {/* Sync Performance Details */}
-      <div className="bg-white/[0.01] border border-white/5 rounded-xl p-3.5 space-y-2.5 text-xs">
+      {/* Sync stats card */}
+      <div className="rounded-xl p-3.5 space-y-2.5 text-xs" style={{ backgroundColor: '#0d0d0d', border: '1px solid #1c1c1c' }}>
         <div className="flex justify-between">
-          <span className="text-gray-500">Last Synced Question</span>
-          <span className="font-semibold text-white truncate max-w-[150px]" title={lastSyncedTitle}>
+          <span style={{ color: '#4b5563' }}>Last Synced</span>
+          <span className="font-bold text-white truncate max-w-[160px]" title={lastSyncedTitle}>
             {lastSyncedTitle}
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Last Sync Time</span>
-          <span className="font-semibold text-gray-300">
-            {lastSyncedTime}
-          </span>
+          <span style={{ color: '#4b5563' }}>Time Elapsed</span>
+          <span className="font-semibold text-gray-300">{lastSyncedTime}</span>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="pt-2 border-t border-white/5 space-y-2">
+      {/* Action CTA */}
+      <div className="pt-2 border-t border-[#1e1e1e] space-y-2">
         <div className="flex gap-2">
-          <a
-            href={githubConnected && repoUrl ? repoUrl : '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex-1 py-2 text-center text-[10px] font-extrabold rounded-lg border transition flex items-center justify-center gap-1.5 ${
-              githubConnected && repoUrl
-                ? 'text-gray-300 border-white/10 bg-white/[0.02] hover:bg-white/[0.06] hover:text-white'
-                : 'text-gray-600 border-white/5 bg-transparent cursor-not-allowed pointer-events-none'
-            }`}
+          <button
+            onClick={() => githubConnected && repoUrl ? window.open(repoUrl, '_blank', 'noopener,noreferrer') : null}
+            disabled={!githubConnected || !repoUrl}
+            className="flex-1 py-2 text-center text-[10px] font-bold rounded-lg border transition flex items-center justify-center gap-1.5"
+            style={{
+              backgroundColor: githubConnected && repoUrl ? '#1a1a1a' : 'transparent',
+              borderColor: githubConnected && repoUrl ? '#2a2a2a' : '#161616',
+              color: githubConnected && repoUrl ? '#9ca3af' : '#2d2d2d',
+              cursor: githubConnected && repoUrl ? 'pointer' : 'not-allowed',
+            }}
           >
-            {repoUrl ? 'Open Repository' : 'Repository Pending'}
-          </a>
+            Open Repo
+          </button>
           <button
             onClick={() => navigate('/dashboard/dsa')}
-            className="flex-1 py-2 text-center text-[10px] font-extrabold text-gray-300 border border-white/10 bg-white/[0.02] hover:bg-white/[0.06] hover:text-white rounded-lg transition"
+            className="flex-1 py-2 text-center text-[10px] font-bold text-gray-300 border border-[#2a2a2a] bg-[#1a1a1a] hover:bg-[#222] hover:text-white rounded-lg transition cursor-pointer"
           >
-            Open Companies Page
+            All Companies
           </button>
         </div>
-        {!githubConnected && (
+        {!githubConnected ? (
           <button
             onClick={handleReconnect}
-            className="cursor-pointer w-full py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-[10px] text-black rounded-lg transition text-center shadow shadow-[#FF7A00]/5"
+            className="w-full py-2.5 font-bold text-[10px] text-white rounded-lg transition text-center cursor-pointer"
+            style={{ background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)`, border: 'none' }}
           >
             Connect GitHub
           </button>
-        )}
-        {githubConnected && (
+        ) : (
           <button
             onClick={handleReconnect}
-            className="cursor-pointer w-full py-2 text-[10px] font-extrabold text-gray-400 hover:text-white bg-transparent hover:bg-white/5 border border-white/5 rounded-lg transition text-center"
+            className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-white bg-transparent hover:bg-white/5 border border-[#2a2a2a] rounded-lg transition text-center cursor-pointer"
           >
             Reconnect GitHub
           </button>
@@ -408,25 +446,19 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
   );
 }
 
-
-
-/* ─────────────────────────────────────────────
-   Main Dashboard
-───────────────────────────────────────────── */
-const SIDEBAR_W = 220;
-
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   const { user } = useAppSelector((s) => s.auth);
-  
+
   const [extensionConnected, setExtensionConnected] = useState(false);
 
-  // 1. Extension Handshake: Poll every 2 seconds for presence of companion extension
+  // Poll companion extension presence
   useEffect(() => {
     let lastPongReceived = 0;
-    
+
     const handlePongMessage = (event) => {
       if (event.source !== window) return;
       if (event.data?.type === 'CODEPREP_PONG') {
@@ -436,15 +468,10 @@ export default function Dashboard() {
     };
 
     window.addEventListener('message', handlePongMessage);
-
-    // Initial ping
     window.postMessage({ type: 'CODEPREP_PING' }, '*');
 
-    // Interval to send ping and check for timeout
     const interval = setInterval(() => {
       window.postMessage({ type: 'CODEPREP_PING' }, '*');
-      
-      // If we received a pong, and it has been more than 5 seconds since the last pong, set disconnected
       if (lastPongReceived > 0 && Date.now() - lastPongReceived > 5000) {
         setExtensionConnected(false);
       }
@@ -472,179 +499,150 @@ export default function Dashboard() {
   });
 
   const {
-    totalSolved     = 0,
+    totalSolved = 0,
     totalBookmarked = 0,
-    streak          = {},
+    streak = {},
     solvedByCompany = [],
-    recentSolved    = [],
-    lastActiveDate  = null,
+    recentSolved = [],
+    lastActiveDate = null,
   } = data || {};
 
   const isNewUser = !isLoading && totalSolved === 0;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary, #07070F)' }}>
+    <div
+      className="min-h-screen text-white antialiased"
+      style={{ backgroundColor: '#0A0A0A' }}
+    >
       <Sidebar />
 
-      {/* ── Main scroll area ── */}
-      <main
-        className="flex-1 flex flex-col overflow-hidden"
-        style={{ marginLeft: SIDEBAR_W }}
-      >
-        {/* ── Top bar ── */}
-        <div
-          className="sticky top-0 z-30 h-14 px-6 flex items-center justify-between shrink-0"
-          style={{
-            background:   'var(--bg-primary, #07070F)',
-            borderBottom: '1px solid var(--border, rgba(255,255,255,0.06))',
-          }}
-        >
-          <div>
-            <h1 className="font-semibold text-lg leading-tight" style={{ color: 'var(--text-1, #F1F5F9)' }}>
-              {getGreeting()}, {user?.name?.split(' ')[0] || 'Engineer'} 👋
-            </h1>
+      <div className="flex flex-col min-h-screen" style={{ marginLeft: SIDEBAR_W }}>
+        {/* ════════════════════════════════════════════════════════════
+            HERO HEADER
+            ════════════════════════════════════════════════════════════ */}
+        <header className="px-10 pt-10 pb-8" style={{ borderBottom: '1px solid #141414' }}>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold tracking-widest uppercase" style={{ color: '#4b5563' }}>
+                System Overview
+              </span>
+            </div>
+            {user && !user.isOnboarded && (
+              <Link
+                to="/onboarding"
+                className="text-[10px] font-black tracking-widest px-3 py-1.5 rounded-full uppercase"
+                style={{ backgroundColor: 'rgba(245,158,11,0.08)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}
+              >
+                ● Complete Setup Setup
+              </Link>
+            )}
           </div>
-          {/* Avatar */}
-          <div
-            className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white uppercase select-none cursor-default"
-            style={{ background: 'var(--orange, #F97316)' }}
-            title={user?.name || 'User'}
-          >
-            {(user?.name || 'U')[0]}
-          </div>
-        </div>
 
-        {/* ── Scrollable content ── */}
-        <div className="flex-1 overflow-y-auto pb-10">
+          <div className="space-y-2">
+            <h1
+              className="font-black leading-none tracking-tight"
+              style={{ fontSize: 'clamp(34px, 3.5vw, 48px)', color: '#ffffff', letterSpacing: '-0.03em' }}
+            >
+              System
+              <span style={{ color: ORANGE }}> Overview</span>
+            </h1>
+            <p className="text-base font-normal max-w-xl" style={{ color: '#6b7280', lineHeight: 1.6 }}>
+              {getGreeting()}, {user?.name?.split(' ')[0] || 'User'}! Track your progress, streak, and recent backup synchronizations in one workspace.
+            </p>
+          </div>
+        </header>
+
+        {/* ── Page contents ── */}
+        <main className="flex-1 px-10 py-8 space-y-8">
           {isLoading ? (
             <>
-              {/* ── Skeleton Stats row ── */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-6 pt-6 animate-pulse">
+              {/* Skeleton loading row */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="rounded-xl p-5"
-                    style={{ background: 'var(--bg-card,#0F0F1A)', height: '136px', border: '1px solid var(--border, rgba(255,255,255,0.06))' }} />
+                  <div
+                    key={i}
+                    className="rounded-xl p-5"
+                    style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', height: '84px' }}
+                  />
                 ))}
               </div>
 
-              {/* ── Skeleton Widgets grid ── */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 px-6 mt-6 animate-pulse">
-                {/* Left col skeleton */}
+              {/* Skeleton widgets grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
                 <div className="lg:col-span-2 space-y-6">
-                  <div className="rounded-xl p-5"
-                    style={{ background: 'var(--bg-card,#0F0F1A)', height: '240px', border: '1px solid var(--border,rgba(255,255,255,0.06))' }} />
-                  <div className="rounded-xl p-5"
-                    style={{ background: 'var(--bg-card,#0F0F1A)', height: '300px', border: '1px solid var(--border,rgba(255,255,255,0.06))' }} />
+                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '240px', border: '1px solid #1e1e1e' }} />
+                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '300px', border: '1px solid #1e1e1e' }} />
                 </div>
-                {/* Right col skeleton */}
                 <div className="lg:col-span-1 space-y-6">
-                  <div className="rounded-xl p-5"
-                    style={{ background: 'var(--bg-card,#0F0F1A)', height: '180px', border: '1px solid var(--border,rgba(255,255,255,0.06))' }} />
-                  <div className="rounded-xl p-5"
-                    style={{ background: 'var(--bg-card,#0F0F1A)', height: '200px', border: '1px solid var(--border,rgba(255,255,255,0.06))' }} />
+                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '180px', border: '1px solid #1e1e1e' }} />
                 </div>
               </div>
             </>
           ) : (
             <>
-              {user && !user.isOnboarded && (
-                <div className="mx-6 mt-6 bg-amber-950/15 border border-amber-900/30 rounded-xl p-4 text-xs text-amber-400 flex items-center justify-between gap-4">
-                  <span className="flex items-center gap-2">
-                    <AlertCircle size={14} className="shrink-0" />
-                    Complete setup to enable automatic sync.
-                  </span>
-                  <Link
-                    to="/onboarding"
-                    className="cursor-pointer text-[10px] font-extrabold text-black bg-gradient-to-r from-[#FF7A00] to-[#FFB800] px-3 py-1.5 rounded-lg transition hover:opacity-90 shrink-0 uppercase"
-                  >
-                    Complete Setup
-                  </Link>
-                </div>
-              )}
-
-              {/* ── Stats row ── */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 px-6 pt-6">
-                <StatCard
-                  icon={Code2}     label="Questions Solved"  sublabel="All-time total"
-                  value={totalSolved}        color="#F97316"  dot="#F97316"
-                />
-                <StatCard
-                  icon={Flame}     label="Day Streak 🔥"    sublabel="Consecutive days"
-                  value={streak?.current || 0} color="#F97316" dot="#F97316"
-                />
-                <StatCard
-                  icon={Bookmark}  label="Bookmarks"         sublabel="Saved questions"
-                  value={totalBookmarked}    color="#8B5CF6"  dot="#8B5CF6"
-                />
-                <StatCard
-                  icon={Calendar}  label="Last Active"       sublabel="Last activity"
-                  value={formatLastActive(lastActiveDate)}
-                  isString color="#22C55E"  dot="#22C55E"
-                />
+              {/* ── STATS ROW ── */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard icon={Code2} label="Questions Solved" sublabel="all-time" value={totalSolved} color={ORANGE} delay={0.05} />
+                <StatCard icon={Flame} label="Day Streak 🔥" sublabel="current streak" value={streak?.current || 0} color="#f59e0b" delay={0.10} />
+                <StatCard icon={Bookmark} label="Bookmarks" sublabel="saved questions" value={totalBookmarked} color="#8b5cf6" delay={0.15} />
+                <StatCard icon={Calendar} label="Last Active" value={formatLastActive(lastActiveDate)} isString color="#22c55e" delay={0.20} />
               </div>
 
-              {/* ── New user welcome or returning user content ── */}
               {isNewUser ? (
-                <div className="px-6">
-                  <NewUserWelcome user={user} />
-                </div>
+                <NewUserWelcome user={user} />
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 px-6 mt-6">
-
-                  {/* Left: Recent + Company Progress */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Column (Recent Activity + Company Progress) */}
                   <div className="lg:col-span-2 space-y-6">
-
                     {/* Recent Activity */}
-                    <div className="rounded-xl p-5"
-                      style={{ background: 'var(--bg-card,#0F0F1A)', border: '1px solid var(--border,rgba(255,255,255,0.06))' }}
+                    <div
+                      className="rounded-2xl p-5"
+                      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
                     >
-                      <p className="font-semibold mb-4" style={{ color: 'var(--text-1,#F1F5F9)' }}>
-                        Recent Activity
-                      </p>
+                      <div className="flex items-center justify-between mb-4 border-b border-[#1e1e1e] pb-3">
+                        <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
+                          Recent Synced Activity
+                        </h3>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
+                          LATEST
+                        </span>
+                      </div>
 
                       {recentSolved.length === 0 ? (
-                        <p className="text-sm py-6 text-center" style={{ color: 'var(--text-3,#475569)' }}>
-                          No activity yet. Start practicing!
+                        <p className="text-sm py-8 text-center" style={{ color: '#4b5563' }}>
+                          No activity synced yet. Practice a company question to begin.
                         </p>
                       ) : (
-                        <div>
+                        <div className="divide-y divide-[#181818]">
                           {recentSolved.slice(0, 5).map((item, i) => (
-                            <div
-                              key={item._id || i}
-                              className="flex items-center gap-3 py-3"
-                              style={{
-                                borderBottom: i < Math.min(recentSolved.length, 5) - 1
-                                  ? '1px solid var(--border,rgba(255,255,255,0.06))'
-                                  : 'none',
-                              }}
-                            >
+                            <div key={item._id || i} className="flex items-center gap-3 py-3.5 first:pt-1 last:pb-1">
                               {/* Difficulty dot */}
-                              <div className="w-2 h-2 rounded-full shrink-0"
-                                style={{ background: diffColor(item.difficulty), marginTop: 2 }} />
+                              <div
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: diffColor(item.difficulty) }}
+                              />
 
-                              {/* Title + meta */}
-                              <div className="flex-1 overflow-hidden">
+                              {/* Details */}
+                              <div className="flex-1 overflow-hidden min-w-0">
                                 <a
                                   href={item.leetcodeUrl || '#'}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm font-medium block truncate transition-colors hover:text-orange-400"
-                                  style={{ color: 'var(--text-1,#F1F5F9)' }}
+                                  className="text-sm font-bold text-white hover:text-orange-400 block truncate transition-colors"
                                 >
                                   {item.title}
                                 </a>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs px-2 py-0.5 rounded capitalize"
-                                    style={{ background: 'var(--bg-hover,#141428)', color: 'var(--text-3,#475569)' }}
-                                  >
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-[#161616] border border-[#222] font-semibold text-gray-500 capitalize">
                                     {item.company}
                                   </span>
-                                  <span className="text-xs ml-auto" style={{ color: 'var(--text-3,#475569)' }}>
+                                  <span className="text-[10px] ml-auto font-mono text-gray-600">
                                     {timeAgo(item.solvedAt)}
                                   </span>
                                 </div>
                               </div>
 
-                              <ExternalLink size={12} style={{ color: 'var(--text-3,#475569)', flexShrink: 0 }} />
+                              <ExternalLink size={10} style={{ color: '#2d2d2d', flexShrink: 0 }} />
                             </div>
                           ))}
                         </div>
@@ -652,41 +650,47 @@ export default function Dashboard() {
                     </div>
 
                     {/* Company Progress */}
-                    <div className="rounded-xl p-5"
-                      style={{ background: 'var(--bg-card,#0F0F1A)', border: '1px solid var(--border,rgba(255,255,255,0.06))' }}
+                    <div
+                      className="rounded-2xl p-5"
+                      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
                     >
-                      <p className="font-semibold mb-5" style={{ color: 'var(--text-1,#F1F5F9)' }}>
-                        Company Progress
-                      </p>
+                      <div className="flex items-center justify-between mb-5 border-b border-[#1e1e1e] pb-3">
+                        <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
+                          Company Progress metrics
+                        </h3>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
+                          METRICS
+                        </span>
+                      </div>
 
                       {solvedByCompany.length === 0 ? (
-                        <p className="text-sm text-center py-4" style={{ color: 'var(--text-3,#475569)' }}>
-                          Practice a company to see progress here.
+                        <p className="text-sm text-center py-6" style={{ color: '#4b5563' }}>
+                          Practice a target company to view detailed progress indicators here.
                         </p>
                       ) : (
                         <div className="space-y-4">
-                          {solvedByCompany.slice(0, 8).map((co) => {
+                          {solvedByCompany.slice(0, 5).map((co) => {
                             const pct = co.total > 0 ? (co.solved / co.total) * 100 : 0;
                             return (
-                              <div key={co.company}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-medium capitalize"
-                                    style={{ color: 'var(--text-1,#F1F5F9)' }}
-                                  >
+                              <div key={co.company} className="space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-bold text-white capitalize leading-none">
                                     {co.company}
                                   </span>
-                                  <span className="text-xs" style={{ color: 'var(--text-3,#475569)' }}>
-                                    {co.solved}/{co.total || '?'}
+                                  <span className="font-semibold text-gray-500">
+                                    {co.solved} / {co.total || '?'} solved
                                   </span>
                                 </div>
-                                <ProgressBar pct={pct} />
-                                <button
-                                  onClick={() => navigate('/company/' + co.company)}
-                                  className="cursor-pointer text-xs mt-1 transition-opacity hover:opacity-80"
-                                  style={{ color: 'var(--orange,#F97316)' }}
-                                >
-                                  Continue →
-                                </button>
+                                <div className="flex items-center gap-3">
+                                  <GradientBar pct={pct} />
+                                  <button
+                                    onClick={() => navigate('/company/' + co.company)}
+                                    className="text-[10px] font-bold transition-opacity hover:opacity-85 cursor-pointer flex-shrink-0"
+                                    style={{ color: ORANGE }}
+                                  >
+                                    Continue →
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -695,7 +699,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Right: Daily Challenge & Extension Status */}
+                  {/* Right Column (Challenge + Extension) */}
                   <div className="lg:col-span-1 space-y-6">
                     <GVChallengeCard streak={streak} />
                     <ExtensionStatusCard
@@ -707,8 +711,15 @@ export default function Dashboard() {
               )}
             </>
           )}
-        </div>
-      </main>
+        </main>
+
+        {/* Footer */}
+        <footer className="px-10 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #141414' }}>
+          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>
+            © 2024 CodePrep — Dashboard Overview
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }

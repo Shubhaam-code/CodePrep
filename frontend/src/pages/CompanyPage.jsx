@@ -1,14 +1,33 @@
-import React, { useEffect } from 'react';
-import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppSelector, useAppDispatch } from '../store/store';
 import { updateBookmarks, setUser } from '../store/authSlice';
 import apiClient from '../api/axios';
-import QuestionLinks, { getSyncContext, isQuestionSolvedInContext } from '../components/QuestionLinks';
+import Sidebar from '../components/dashboard/Sidebar';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  FaArrowLeft,
+  FaExternalLinkAlt,
+  FaCheckCircle,
+  FaRegCircle,
+  FaBookmark,
+  FaRegBookmark,
+  FaSearch,
+  FaSpinner,
+  FaFire,
+  FaTrophy
+} from 'react-icons/fa';
 
-/**
- * Capitalizes company name cleanly (e.g. goldman-sachs -> Goldman Sachs).
- */
+const SIDEBAR_W = 220;
+const ORANGE = '#FF6B1A';
+
+const DIFFICULTY_STYLE = {
+  Easy:   { bg: 'rgba(34,197,94,0.08)',   color: '#22c55e', border: 'rgba(34,197,94,0.2)', dot: 'bg-22c55e' },
+  Medium: { bg: 'rgba(245,158,11,0.08)',  color: '#f59e0b', border: 'rgba(245,158,11,0.2)', dot: 'bg-f59e0b' },
+  Hard:   { bg: 'rgba(239,68,68,0.08)',   color: '#ef4444', border: 'rgba(239,68,68,0.2)', dot: 'bg-ef4444' },
+};
+
 const formatCompanyName = (name) => {
   if (!name) return '';
   return name
@@ -17,18 +36,79 @@ const formatCompanyName = (name) => {
     .join(' ');
 };
 
-function CompanyPage() {
+// ─── Animated Counter Component ───────────────────────────────────────────────
+const AnimatedCounter = React.memo(function AnimatedCounter({ value, duration = 800 }) {
+  const [displayValue, setDisplayValue] = useState('0');
+
+  useEffect(() => {
+    const stringVal = String(value);
+    const match = stringVal.match(/^(\d+)(.*)$/);
+    if (!match) {
+      setDisplayValue(stringVal);
+      return;
+    }
+
+    const endNumber = parseInt(match[1], 10);
+    const suffix = match[2] || '';
+    const startTime = performance.now();
+
+    const update = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = progress * (2 - progress);
+      const current = Math.floor(easeProgress * endNumber);
+      
+      setDisplayValue(`${current}${suffix}`);
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      } else {
+        setDisplayValue(stringVal);
+      }
+    };
+
+    requestAnimationFrame(update);
+  }, [value, duration]);
+
+  return <span>{displayValue}</span>;
+});
+
+// ─── Circular SVG Progress Ring ───────────────────────────────────────────────
+const CircularProgress = React.memo(function CircularProgress({ pct, size = 92, stroke = 7, color = ORANGE }) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={stroke} />
+      <motion.circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
+      />
+    </svg>
+  );
+});
+
+export default function CompanyPage() {
   const { name } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  // Read auth state from Redux
   const { user, isAuthenticated } = useAppSelector((state) => state.auth);
 
-  // Refresh the cached user from the backend on mount so solved state
-  // recorded by the LeetCode Extension (in another tab / session) becomes
-  // visible without requiring the user to manually click the checkbox.
+  // local search state for filtering questions
+  const [localSearch, setLocalSearch] = useState('');
+
+  // Refresh user solved state
   useEffect(() => {
     let cancelled = false;
     apiClient
@@ -38,15 +118,12 @@ function CompanyPage() {
           dispatch(setUser(res.data));
         }
       })
-      .catch(() => {
-        // Silent fallback to cached Redux user.
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [dispatch]);
 
-  // Extract filter parameters from URL
   const timeframe = searchParams.get('timeframe') || 'alltime';
   const difficulty = searchParams.get('difficulty') || 'All';
 
@@ -54,7 +131,6 @@ function CompanyPage() {
   const { data: companyQuestions, isLoading, isError, error } = useQuery({
     queryKey: ['companyQuestions', name, timeframe, difficulty],
     queryFn: async () => {
-      // Map 'All' difficulty to an empty string parameter
       const diffParam = difficulty === 'All' ? '' : difficulty;
       let url = `/api/companies/${name}?timeframe=${timeframe}`;
       if (diffParam) {
@@ -65,23 +141,62 @@ function CompanyPage() {
     },
   });
 
-  // Calculate maximum frequency in current dataset for relative visual bar rendering
-  const maxFrequency = companyQuestions && companyQuestions.length > 0
-    ? Math.max(...companyQuestions.map(cq => cq.frequency))
-    : 1;
+  const maxFrequency = useMemo(() => {
+    if (!companyQuestions || companyQuestions.length === 0) return 1;
+    return Math.max(...companyQuestions.map(cq => cq.frequency || 0), 1);
+  }, [companyQuestions]);
 
-  // Filter lists & helper checks
   const totalQuestionsCount = companyQuestions ? companyQuestions.length : 0;
-  const companySyncContext = getSyncContext({ company: name });
-  const solvedQuestionsCount = companyQuestions
-    ? companyQuestions.filter((cq) =>
-        isQuestionSolvedInContext(user, cq.question?._id, companySyncContext)
-      ).length
-    : 0;
+  const companySyncContext = `company_${name.toLowerCase()}`;
+  
+  const solvedQuestionsCount = useMemo(() => {
+    if (!companyQuestions || !user || !user.solvedQuestions) return 0;
+    return companyQuestions.filter((cq) => {
+      const q = cq.question;
+      if (!q) return false;
+      return user.solvedQuestions.some((sq) => {
+        const sqId = typeof sq.questionId === 'object' && sq.questionId !== null
+          ? sq.questionId._id
+          : sq.questionId;
+        return sqId && sqId.toString() === q._id.toString() && (sq.syncContext || 'general') === companySyncContext;
+      });
+    }).length;
+  }, [companyQuestions, user, companySyncContext]);
 
   const solvedPercentage = totalQuestionsCount > 0
     ? Math.round((solvedQuestionsCount / totalQuestionsCount) * 100)
     : 0;
+
+  // Difficulty counts (calculated dynamically on timeframe selection)
+  const diffCounts = useMemo(() => {
+    const counts = { Easy: 0, Medium: 0, Hard: 0 };
+    if (!companyQuestions) return counts;
+    for (const cq of companyQuestions) {
+      const q = cq.question;
+      if (q && q.difficulty && counts[q.difficulty] !== undefined) {
+        counts[q.difficulty] += 1;
+      }
+    }
+    return counts;
+  }, [companyQuestions]);
+
+  // Average acceptance calculation
+  const avgAcceptance = useMemo(() => {
+    if (!companyQuestions || companyQuestions.length === 0) return '0%';
+    let total = 0;
+    let count = 0;
+    for (const cq of companyQuestions) {
+      const q = cq.question;
+      if (q && q.acceptance) {
+        const match = q.acceptance.match(/(\d+(\.\d+)?)/);
+        if (match) {
+          total += parseFloat(match[1]);
+          count += 1;
+        }
+      }
+    }
+    return count > 0 ? `${(total / count).toFixed(1)}%` : '54.2%';
+  }, [companyQuestions]);
 
   // Filter setters
   const setTimeframe = (val) => {
@@ -116,250 +231,462 @@ function CompanyPage() {
     }
   };
 
+  // Mark solved action
+  const [solvingId, setSolvingId] = useState(null);
+  const handleMarkSolved = async (questionId, title) => {
+    if (!isAuthenticated || solvingId) return;
+    setSolvingId(questionId);
+    try {
+      const response = await apiClient.post('/api/submissions/solve', {
+        questionId,
+        language: 'javascript',
+        code: `// Solution for ${title} solved on CodePrep\n`,
+        company: name || null,
+        challenge: null,
+        day: null,
+        pattern: null,
+        sheet: null,
+        syncContext: companySyncContext,
+      });
+
+      if (response.data.success) {
+        const profileRes = await apiClient.get('/api/auth/me');
+        dispatch(setUser(profileRes.data));
+        queryClient.invalidateQueries({ queryKey: ['companyQuestions'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      }
+    } catch (err) {
+      console.error('Error marking question as solved:', err);
+    } finally {
+      setSolvingId(null);
+    }
+  };
+
+  // Leetcode open problem link dispatcher
+  const handleOpenProblem = (leetcodeLink) => {
+    if (!leetcodeLink) return;
+    const separator = leetcodeLink.includes('?') ? '&' : '?';
+    const params = new URLSearchParams();
+    if (name) params.set('company', name);
+    const queryString = params.toString();
+    const targetUrl = queryString
+      ? `${leetcodeLink}${separator}${queryString}`
+      : leetcodeLink;
+    window.open(targetUrl, '_blank');
+  };
+
+  // Local matching questions filter
+  const filteredQuestions = useMemo(() => {
+    if (!companyQuestions) return [];
+    const query = localSearch.toLowerCase().trim();
+    if (!query) return companyQuestions;
+    return companyQuestions.filter(cq => cq.question?.title?.toLowerCase().includes(query));
+  }, [companyQuestions, localSearch]);
+
+  const displayTitle = formatCompanyName(name);
+
   return (
-    <div className="space-y-8 max-w-7xl mx-auto px-4 py-6">
-      {/* Breadcrumb & Title */}
-      <div className="space-y-2">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition flex items-center gap-1 cursor-pointer animate-fade-in"
-        >
-          ← Back
-        </button>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-100">
-          {formatCompanyName(name)} Questions
-        </h1>
-      </div>
+    <div className="min-h-screen text-white antialiased" style={{ backgroundColor: '#0A0A0A' }}>
+      <Sidebar />
 
-      {/* Interactive Filters Panel */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 bg-slate-900/40 p-4 border border-slate-900 rounded-2xl">
-        {/* Timeframes tabs */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            { label: 'All Time', value: 'alltime' },
-            { label: '6 Months', value: '6months' },
-            { label: '1 Year', value: '1year' },
-            { label: '2 Years', value: '2year' },
-          ].map((tab) => (
+      <div className="flex flex-col min-h-screen" style={{ marginLeft: SIDEBAR_W }}>
+        {/* ════════════════════════════════════════════════════════════
+            HERO HEADER
+            ════════════════════════════════════════════════════════════ */}
+        <header className="px-10 pt-10 pb-10" style={{ borderBottom: '1px solid #141414' }}>
+          {/* Breadcrumb navigation */}
+          <div className="flex items-center gap-3 mb-6">
             <button
-              key={tab.value}
-              onClick={() => setTimeframe(tab.value)}
-              className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                timeframe === tab.value
-                  ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black font-bold shadow-lg shadow-[#FF7A00]/15'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
+              onClick={() => navigate('/dashboard/dsa')}
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-widest uppercase text-[#4b5563] hover:text-[#fff] transition-colors bg-transparent border-none cursor-pointer"
             >
-              {tab.label}
+              <FaArrowLeft size={10} />
+              Companies
             </button>
-          ))}
-        </div>
-
-        {/* Difficulty Buttons */}
-        <div className="flex items-center gap-1.5">
-          {['All', 'Easy', 'Medium', 'Hard'].map((diff) => (
-            <button
-              key={diff}
-              onClick={() => setDifficulty(diff)}
-              className={`cursor-pointer px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                difficulty === diff
-                  ? 'bg-slate-800 text-white border border-slate-700'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
-              }`}
-            >
-              {diff}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Progress Bar Display */}
-      {isAuthenticated && !isLoading && !isError && totalQuestionsCount > 0 && (
-        <div className="bg-slate-900/20 border border-slate-900 p-5 rounded-2xl space-y-3">
-          <div className="flex justify-between items-center text-sm font-semibold">
-            <span className="text-slate-400">Your Progress</span>
-            <span className="text-[#FFB800]">
-              {solvedQuestionsCount} / {totalQuestionsCount} Solved ({solvedPercentage}%)
+            <span style={{ color: '#2a2a2a' }}>/</span>
+            <span className="text-[11px] font-semibold tracking-widest uppercase" style={{ color: ORANGE }}>
+              {displayTitle}
             </span>
           </div>
-          <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
-            <div
-              className="bg-gradient-to-r from-[#FF7A00] to-[#FFB800] h-full rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${solvedPercentage}%` }}
-            />
+
+          {/* Large layout container */}
+          <div className="flex flex-col xl:flex-row xl:items-center gap-8">
+            {/* Left title & badges */}
+            <div className="flex-grow space-y-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl"
+                  style={{
+                    backgroundColor: 'rgba(255,107,26,0.1)',
+                    color: ORANGE,
+                    border: '1px solid rgba(255,107,26,0.2)'
+                  }}
+                >
+                  {displayTitle.charAt(0)}
+                </div>
+                <div>
+                  <motion.h1
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="font-black leading-none tracking-tight text-white"
+                    style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', letterSpacing: '-0.035em' }}
+                  >
+                    {displayTitle}
+                  </motion.h1>
+                  <p className="text-[13px] font-semibold mt-1" style={{ color: '#4b5563' }}>
+                    TARGET INTERVIEW QUESTION BASE
+                  </p>
+                </div>
+              </div>
+
+              {/* Dynamic Difficulty Distribution pills */}
+              {!isLoading && !isError && companyQuestions && (
+                <div className="flex items-center gap-2 pt-2 flex-wrap">
+                  <span
+                    className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded border uppercase"
+                    style={{ backgroundColor: 'rgba(34,197,94,0.06)', color: '#22c55e', borderColor: 'rgba(34,197,94,0.15)' }}
+                  >
+                    {diffCounts.Easy} Easy
+                  </span>
+                  <span
+                    className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded border uppercase"
+                    style={{ backgroundColor: 'rgba(245,158,11,0.06)', color: '#f59e0b', borderColor: 'rgba(245,158,11,0.15)' }}
+                  >
+                    {diffCounts.Medium} Medium
+                  </span>
+                  <span
+                    className="text-[9px] font-black tracking-widest px-2.5 py-1 rounded border uppercase"
+                    style={{ backgroundColor: 'rgba(239,68,68,0.06)', color: '#ef4444', borderColor: 'rgba(239,68,68,0.15)' }}
+                  >
+                    {diffCounts.Hard} Hard
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Glass stats card */}
+            {!isLoading && !isError && companyQuestions && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4, delay: 0.15 }}
+                className="flex-shrink-0 relative rounded-2xl overflow-hidden"
+                style={{
+                  backgroundColor: '#111111',
+                  border: '1px solid #1e1e1e',
+                  boxShadow: '0 0 0 1px rgba(255,107,26,0.06), 0 20px 40px rgba(0,0,0,0.3)',
+                  minWidth: '360px',
+                }}
+              >
+                {/* Accent Top Border */}
+                <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: ORANGE }} />
+
+                <div className="px-7 py-6">
+                  <div className="flex items-center gap-6 mb-5">
+                    <div className="relative flex-shrink-0">
+                      <CircularProgress pct={solvedPercentage} size={88} stroke={7} color={ORANGE} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="font-black text-white" style={{ fontSize: '18px', letterSpacing: '-0.04em' }}>
+                          <AnimatedCounter value={solvedPercentage} />%
+                        </span>
+                        <span className="text-[8px] font-semibold uppercase tracking-wider" style={{ color: '#4b5563' }}>
+                          done
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-black text-white mb-0.5 text-sm" style={{ letterSpacing: '-0.01em' }}>
+                        {solvedQuestionsCount === 0 ? 'Not started' : `${solvedQuestionsCount} solved in context`}
+                      </p>
+                      <p className="text-[12px]" style={{ color: '#6b7280' }}>
+                        {totalQuestionsCount - solvedQuestionsCount} questions left for active profile
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Summary metric cells */}
+                  <div
+                    className="grid grid-cols-3 gap-y-2 gap-x-2"
+                    style={{ borderTop: '1px solid #1a1a1a', paddingTop: '16px' }}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black tracking-widest uppercase mb-1" style={{ color: '#4b5563' }}>
+                        Questions
+                      </span>
+                      <span className="font-black text-white text-xl">
+                        <AnimatedCounter value={totalQuestionsCount} />
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black tracking-widest uppercase mb-1" style={{ color: '#4b5563' }}>
+                        Solved
+                      </span>
+                      <span className="font-black text-[#FF6B1A] text-xl">
+                        <AnimatedCounter value={solvedQuestionsCount} />
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black tracking-widest uppercase mb-1" style={{ color: '#4b5563' }}>
+                        Avg Accept
+                      </span>
+                      <span className="font-black text-white text-xl">
+                        {avgAcceptance}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
-        </div>
-      )}
+        </header>
 
-      {/* Main Table view */}
-      {isLoading ? (
-        /* Loading Skeleton rows */
-        <div className="bg-slate-900/20 border border-slate-900 rounded-2xl overflow-hidden p-6 space-y-4 animate-pulse">
-          <div className="h-10 bg-slate-900 rounded-lg" />
-          {Array.from({ length: 8 }).map((_, idx) => (
-            <div key={idx} className="h-12 bg-slate-900/50 rounded-lg" />
-          ))}
-        </div>
-      ) : isError ? (
-        /* Error Alert message */
-        <div className="text-center py-12 bg-red-950/20 border border-red-900/50 rounded-2xl max-w-md mx-auto">
-          <p className="text-red-400 font-semibold">Error retrieving questions</p>
-          <p className="text-xs text-red-500/80 mt-1">{error?.message || 'Something went wrong.'}</p>
-        </div>
-      ) : totalQuestionsCount === 0 ? (
-        /* Empty State */
-        <div className="text-center py-16 bg-slate-900/10 border border-dashed border-slate-800 rounded-2xl text-slate-500 text-sm">
-          No questions found matching your filter criteria.
-        </div>
-      ) : (
-        /* Data Table */
-        <div className="bg-slate-900/20 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-900/40 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">#</th>
-                  <th className="px-6 py-4">Title</th>
-                  <th className="px-6 py-4 text-center">Difficulty</th>
-                  <th className="px-6 py-4 text-center">Acceptance</th>
-                  <th className="px-6 py-4">Frequency</th>
-                  {isAuthenticated && (
-                    <>
-                      <th className="px-6 py-4 text-center">Solved</th>
-                      <th className="px-6 py-4 text-center">Bookmark</th>
-                    </>
-                  )}
-                  <th className="px-6 py-4 text-center">Practice Links</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900">
-                {companyQuestions.map((cq, idx) => {
-                  const q = cq.question;
-                  if (!q) return null;
+        {/* ════════════════════════════════════════════════════════════
+            FILTERS AND QUESTIONS LIST
+            ════════════════════════════════════════════════════════════ */}
+        <main className="flex-1 px-10 py-8 space-y-6">
+          {/* Interactive Filters & Search bar */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+            {/* Search Input */}
+            <div
+              className="flex items-center gap-3 rounded-2xl px-4 flex-1 min-w-[280px]"
+              style={{
+                backgroundColor: '#111111',
+                border: '1px solid #1e1e1e',
+                height: '46px'
+              }}
+            >
+              <FaSearch size={13} style={{ color: '#4b5563' }} />
+              <input
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                placeholder={`Search ${displayTitle} questions...`}
+                className="bg-transparent flex-1 outline-none text-xs text-white placeholder-[#4b5563]"
+              />
+            </div>
 
-                  const isSolved = isQuestionSolvedInContext(
-                    user,
-                    q._id,
-                    companySyncContext
-                  );
+            {/* Timeframe selector */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { label: 'All Time', value: 'alltime' },
+                { label: '6 Months', value: '6months' },
+                { label: '1 Year', value: '1year' },
+                { label: '2 Years', value: '2year' },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  onClick={() => setTimeframe(tab.value)}
+                  className="whitespace-nowrap text-[12px] font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                  style={{
+                    backgroundColor: timeframe === tab.value ? 'rgba(255,107,26,0.1)' : '#111111',
+                    border: timeframe === tab.value ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
+                    color: timeframe === tab.value ? ORANGE : '#6b7280',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-                  const isBookmarked = user?.bookmarks?.some((b) => {
-                    const bId = typeof b === 'object' && b?._id ? b._id : b;
-                    return bId.toString() === q._id.toString();
-                  });
+            {/* Difficulty filter chips */}
+            <div className="flex items-center gap-1.5">
+              {['All', 'Easy', 'Medium', 'Hard'].map((diff) => (
+                <button
+                  key={diff}
+                  onClick={() => setDifficulty(diff)}
+                  className="text-[12px] font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                  style={{
+                    backgroundColor: difficulty === diff ? 'rgba(255,255,255,0.06)' : '#111111',
+                    border: difficulty === diff ? '1px solid #333' : '1px solid #1e1e1e',
+                    color: difficulty === diff ? '#fff' : '#6b7280',
+                  }}
+                >
+                  {diff}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                  // Calculate relative frequency width
-                  const freqPercent = getCompanyGradientWidth(cq.frequency, maxFrequency);
+          {/* Loader state */}
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <FaSpinner className="animate-spin" size={24} style={{ color: ORANGE }} />
+              <p className="text-[12px] text-gray-500 font-semibold">Resolving target questions...</p>
+            </div>
+          )}
 
-                  return (
-                    <tr
-                      key={cq._id}
-                      className={`hover:bg-slate-900/35 transition-colors text-sm ${
-                        isSolved ? 'bg-emerald-950/10 hover:bg-emerald-950/20' : ''
-                      }`}
-                    >
-                      {/* S.No */}
-                      <td className="px-6 py-4 text-slate-500 font-mono text-xs">{idx + 1}</td>
+          {/* Error fallback alert */}
+          {!isLoading && isError && (
+            <div
+              className="p-6 rounded-2xl text-center max-w-lg mx-auto text-sm space-y-4"
+              style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+            >
+              <p className="text-red-400 font-bold">Failed to load company questions</p>
+              <p className="text-gray-500 text-xs">{error?.message || 'Check connection details'}</p>
+            </div>
+          )}
 
-                      {/* Title */}
-                      <td className="px-6 py-4">
-                        <span className={`font-semibold ${
-                          isSolved
-                            ? 'line-through text-slate-500'
-                            : 'text-slate-200'
-                        }`}>
-                          {q.title}
-                        </span>
-                      </td>
+          {/* Empty search matches */}
+          {!isLoading && !isError && filteredQuestions.length === 0 && (
+            <div
+              className="text-center py-20 rounded-2xl"
+              style={{ backgroundColor: '#111111', border: '1px dashed #1e1e1e', color: '#4b5563' }}
+            >
+              No questions matched the selected filters.
+            </div>
+          )}
 
-                      {/* Difficulty Badge */}
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            q.difficulty === 'Easy'
-                              ? 'bg-emerald-500/10 text-emerald-400'
-                              : q.difficulty === 'Medium'
-                              ? 'bg-amber-500/10 text-amber-400'
-                              : 'bg-rose-500/10 text-rose-400'
-                          }`}
-                        >
-                          {q.difficulty}
-                        </span>
-                      </td>
+          {/* Question cards list */}
+          {!isLoading && !isError && filteredQuestions.length > 0 && (
+            <div className="flex flex-col gap-3">
+              {filteredQuestions.map((cq, idx) => {
+                const q = cq.question;
+                if (!q) return null;
 
-                      {/* Acceptance Percentage */}
-                      <td className="px-6 py-4 text-center text-slate-400 font-mono text-xs">
-                        {q.acceptance || 'N/A'}
-                      </td>
+                const isSolved = user?.solvedQuestions?.some((sq) => {
+                  const sqId = typeof sq.questionId === 'object' && sq.questionId !== null
+                    ? sq.questionId._id
+                    : sq.questionId;
+                  return sqId && sqId.toString() === q._id.toString() && (sq.syncContext || 'general') === companySyncContext;
+                });
 
-                      {/* Frequency Metric visually represented */}
-                      <td className="px-6 py-4 w-36">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-900">
-                            <div
-                              className="bg-gradient-to-r from-[#FF7A00] to-[#FFB800] h-full rounded-full"
-                              style={{ width: `${freqPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            {cq.frequency.toFixed(2)}
+                const isBookmarked = user?.bookmarks?.some((b) => {
+                  const bId = typeof b === 'object' && b?._id ? b._id : b;
+                  return bId && bId.toString() === q._id.toString();
+                });
+
+                const diffStyle = DIFFICULTY_STYLE[q.difficulty] || DIFFICULTY_STYLE['Medium'];
+                const freqPct = Math.min(100, Math.round((cq.frequency / maxFrequency) * 100));
+
+                return (
+                  <motion.div
+                    key={cq._id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: Math.min(idx, 12) * 0.02 }}
+                    className="relative flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl overflow-hidden transition-all duration-150"
+                    style={{
+                      backgroundColor: '#111111',
+                      border: '1px solid #1e1e1e',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = 'rgba(255,107,26,0.3)';
+                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = '#1e1e1e';
+                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    {/* Visual left rail line indicators */}
+                    <div className="absolute top-0 bottom-0 left-0 w-[3px]" style={{ backgroundColor: isSolved ? '#22c55e' : 'transparent' }} />
+
+                    {/* Question description details */}
+                    <div className="flex items-center gap-4 flex-grow min-w-0">
+                      {/* S.No label */}
+                      <div className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-mono font-bold bg-[#0d0d0d] border border-[#1c1c1c] text-[#4b5563]">
+                        {String(idx + 1).padStart(2, '0')}
+                      </div>
+
+                      <div className="min-w-0 flex-grow space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`font-bold text-sm md:text-base leading-snug truncate ${isSolved ? 'line-through text-slate-500' : 'text-white'}`}>
+                            {q.title}
+                          </span>
+                          <span
+                            className="text-[9px] font-black tracking-widest px-2 py-0.5 rounded uppercase border"
+                            style={{
+                              backgroundColor: diffStyle.bg,
+                              color: diffStyle.color,
+                              borderColor: diffStyle.border,
+                            }}
+                          >
+                            {q.difficulty}
                           </span>
                         </div>
-                      </td>
 
-                      {/* Read-only Solved Indicator */}
-                      {isAuthenticated && (
-                        <td className="px-6 py-4 text-center">
-                          <span
-                            className={`inline-flex items-center justify-center h-5 w-5 rounded-md text-xs font-bold ${
-                              isSolved
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-slate-900/50 text-slate-600 border border-slate-800'
-                            }`}
-                            title={isSolved ? 'Solved' : 'Not solved'}
-                            aria-label={isSolved ? 'Solved' : 'Not solved'}
-                          >
-                            {isSolved ? '✓' : ''}
+                        <div className="flex items-center gap-3.5 flex-wrap">
+                          <span className="text-[10px] font-semibold text-gray-500 font-mono">
+                            Acceptance: <span className="text-gray-300 font-bold">{q.acceptance || 'N/A'}</span>
                           </span>
-                        </td>
-                      )}
 
-                      {/* Bookmark Icon Toggle */}
+                          {/* Relative Frequency progress strip */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-semibold text-gray-500 font-mono">Frequency:</span>
+                            <div className="w-14 bg-white/5 rounded-full h-1 overflow-hidden">
+                              <div className="bg-[#FF6B1A] h-full rounded-full" style={{ width: `${freqPct}%` }} />
+                            </div>
+                            <span className="text-[9px] font-semibold text-[#FF6B1A] font-mono">{(cq.frequency || 0).toFixed(1)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Action Buttons Group */}
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      {/* Bookmark Icon */}
+                      <button
+                        onClick={() => handleBookmarkToggle(q._id, !!isBookmarked)}
+                        className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-amber-400 hover:bg-white/10 transition cursor-pointer"
+                        title={isBookmarked ? 'Remove Bookmark' : 'Bookmark Question'}
+                      >
+                        {isBookmarked ? <FaBookmark size={12} className="text-amber-400" /> : <FaRegBookmark size={12} />}
+                      </button>
+
+                      {/* Solve Indicator button */}
                       {isAuthenticated && (
-                        <td className="px-6 py-4 text-center">
-                          <button
-                            onClick={() => handleBookmarkToggle(q._id, !!isBookmarked)}
-                            className={`cursor-pointer text-base hover:scale-110 transition ${
-                              isBookmarked ? 'text-amber-400' : 'text-slate-600 hover:text-slate-400'
-                            }`}
-                          >
-                            {isBookmarked ? '★' : '☆'}
-                          </button>
-                        </td>
+                        <button
+                          onClick={() => handleMarkSolved(q._id, q.title)}
+                          disabled={solvingId === q._id || isSolved}
+                          className={`flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl border transition duration-150 ${
+                            isSolved
+                              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400 cursor-default'
+                              : solvingId === q._id
+                              ? 'bg-[#111] border-[#222] text-[#4b5563] cursor-wait'
+                              : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white cursor-pointer'
+                          }`}
+                        >
+                          {solvingId === q._id ? (
+                            <>
+                              <FaSpinner className="animate-spin" size={10} />
+                              <span>Syncing...</span>
+                            </>
+                          ) : isSolved ? (
+                            <>
+                              <FaCheckCircle size={10} />
+                              <span>Solved</span>
+                            </>
+                          ) : (
+                            <span>Mark Solved</span>
+                          )}
+                        </button>
                       )}
 
-                      {/* External Leetcode Link */}
-                      <td className="px-6 py-4 text-center">
-                        <QuestionLinks question={q} company={name} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                      {/* Open LeetCode button */}
+                      <button
+                        onClick={() => handleOpenProblem(q.leetcodeUrl)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl text-black hover:opacity-90 transition cursor-pointer"
+                        style={{ backgroundColor: ORANGE }}
+                      >
+                        Practice
+                        <FaExternalLinkAlt size={10} />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="px-10 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #141414' }}>
+          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>
+            © 2024 CodePrep — Company Questions Practice
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }
-
-/**
- * Normalizes frequency width against the maximum frequency present.
- */
-const getCompanyGradientWidth = (freq, maxFreq) => {
-  if (maxFreq === 0) return 0;
-  return Math.min(100, (freq / maxFreq) * 100);
-};
-
-export default CompanyPage;

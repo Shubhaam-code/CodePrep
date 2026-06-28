@@ -145,8 +145,10 @@ export default function Sidebar() {
 
         {/* Logo / Brand */}
         <div
-          className="px-3 pt-5 pb-4 flex items-center justify-center overflow-hidden"
-          style={{ borderBottom: '1px solid #1a1a1a', minHeight: '64px' }}
+          className="flex items-center justify-center overflow-hidden transition-all duration-200 shrink-0 border-b border-[#1a1a1a]"
+          style={{
+            minHeight: '84px',
+          }}
         >
           <AnimatePresence initial={false}>
             {!collapsed ? (
@@ -162,7 +164,7 @@ export default function Sidebar() {
                   <img
                     src="/imagecopy.png"
                     alt="CodePrep AI"
-                    className="h-8 w-auto object-contain"
+                    style={{ width: '180px', height: 'auto', objectFit: 'contain', display: 'block' }}
                   />
                 </Link>
               </motion.div>
@@ -175,11 +177,12 @@ export default function Sidebar() {
                 transition={{ duration: 0.15 }}
               >
                 <Link to="/dashboard" className="block">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-black"
-                    style={{ background: 'linear-gradient(135deg, #FF6B1A, #ff9a1a)', color: '#fff' }}
-                  >
-                    CP
+                  <div className="w-[52px] h-[52px] flex items-center justify-center bg-transparent">
+                    <img
+                      src="/image.png"
+                      alt="CodePrep Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                 </Link>
               </motion.div>
@@ -189,15 +192,15 @@ export default function Sidebar() {
 
 
         {/* Navigation */}
-        <nav className="flex-1 px-2 pt-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 px-3 pt-6 space-y-2 overflow-y-auto overflow-x-hidden">
           {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
             const active = isActive(path);
             return (
               <Link key={path} to={path}>
                 <div
-                  className="flex items-center gap-3 rounded-lg cursor-pointer transition-all duration-150 overflow-hidden"
+                  className="flex items-center gap-3.5 rounded-xl cursor-pointer transition-all duration-150 overflow-hidden"
                   style={{
-                    padding: collapsed ? '9px 0' : '9px 12px',
+                    padding: collapsed ? '11px 0' : '11px 14px',
                     justifyContent: collapsed ? 'center' : 'flex-start',
                     backgroundColor: active ? 'rgba(255,107,26,0.1)' : 'transparent',
                     color: active ? '#FF6B1A' : '#4b5563',
@@ -229,7 +232,7 @@ export default function Sidebar() {
                         animate={{ opacity: 1, width: 'auto' }}
                         exit={{ opacity: 0, width: 0 }}
                         transition={{ duration: 0.15 }}
-                        className="text-[13px] font-medium whitespace-nowrap overflow-hidden"
+                        className="text-[13px] font-bold whitespace-nowrap overflow-hidden"
                         style={{ color: 'inherit' }}
                       >
                         {label}
@@ -242,85 +245,14 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom: User info + Settings + Logout */}
+        {/* Bottom Section: Logout only */}
         <div
-          className="mt-auto px-2 py-3 space-y-1 overflow-hidden"
-          style={{ borderTop: '1px solid #1a1a1a' }}
+          className="mt-auto px-3 py-5 overflow-hidden shrink-0 border-t border-[#1a1a1a]"
         >
-          {/* User card */}
-          <div
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg overflow-hidden"
-            style={{
-              backgroundColor: '#161616',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-extrabold shrink-0"
-              style={{ background: getLetterColor(user?.name || '') }}
-            >
-              {initials}
-            </div>
-            <AnimatePresence initial={false}>
-              {!collapsed && (
-                <motion.div
-                  key="user-info"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="overflow-hidden"
-                >
-                  <p className="text-[12px] font-semibold text-white truncate leading-tight whitespace-nowrap">
-                    {user?.name || 'User'}
-                  </p>
-                  <p className="text-[10px] truncate leading-tight whitespace-nowrap" style={{ color: '#4b5563' }}>
-                    {user?.email || ''}
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Settings */}
-          <div
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 overflow-hidden"
-            style={{
-              color: '#4b5563',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = '#161616';
-              e.currentTarget.style.color = '#9ca3af';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = '#4b5563';
-            }}
-            title={collapsed ? 'Settings' : ''}
-          >
-            <Settings size={14} style={{ flexShrink: 0, color: 'inherit' }} />
-            <AnimatePresence initial={false}>
-              {!collapsed && (
-                <motion.span
-                  key="settings-label"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="text-[13px] font-medium whitespace-nowrap overflow-hidden"
-                  style={{ color: 'inherit' }}
-                >
-                  Settings
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-
           {/* Logout */}
           <div
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 overflow-hidden"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl cursor-pointer transition-all duration-150 overflow-hidden"
             style={{
               color: '#4b5563',
               justifyContent: collapsed ? 'center' : 'flex-start',
@@ -335,7 +267,7 @@ export default function Sidebar() {
             }}
             title={collapsed ? 'Logout' : ''}
           >
-            <LogOutIcon size={14} style={{ flexShrink: 0, color: 'inherit' }} />
+            <LogOutIcon size={15} style={{ flexShrink: 0, color: 'inherit' }} />
             <AnimatePresence initial={false}>
               {!collapsed && (
                 <motion.span
@@ -344,7 +276,7 @@ export default function Sidebar() {
                   animate={{ opacity: 1, width: 'auto' }}
                   exit={{ opacity: 0, width: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="text-[13px] font-medium whitespace-nowrap overflow-hidden"
+                  className="text-[13px] font-bold whitespace-nowrap overflow-hidden"
                   style={{ color: 'inherit' }}
                 >
                   Logout
