@@ -493,3 +493,33 @@ a, button {
   transition: width 0.3s ease;
 }
 .hover-underline:hover::after { width: 100%; }
+
+/* ── Thumbnail Image Loader & Fade-In ────────────────────── */
+.thumbnail-skeleton {
+  width: 280px;
+  height: 280px;
+  border-radius: 12px;
+  background-color: #1a1a2e;
+  animation: orange-pulse 2s ease-in-out infinite;
+}
+
+@keyframes orange-pulse {
+  0%, 100% {
+    background-color: #1a1a2e;
+    box-shadow: inset 0 0 12px rgba(249, 115, 22, 0.15), 0 0 10px rgba(249, 115, 22, 0.05);
+  }
+  50% {
+    background-color: #252542;
+    box-shadow: inset 0 0 24px rgba(249, 115, 22, 0.35), 0 0 20px rgba(249, 115, 22, 0.15);
+  }
+}
+
+.image-fade-in {
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+
+.image-fade-in-loaded {
+  opacity: 1;
+}
+

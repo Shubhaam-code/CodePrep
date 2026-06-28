@@ -1,32 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FaCodeBranch as RoadmapIcon,
   FaLock as LockIcon,
-  FaUnlock as UnlockIcon,
+  FaArrowRight as ArrowRight,
   FaClock as ClockIcon,
-  FaListUl as ListIcon,
-  FaChevronRight as ChevronRight,
+  FaTrophy,
+  FaFire,
+  FaChartBar,
+  FaCheckCircle,
 } from 'react-icons/fa';
 import Sidebar from '../../components/dashboard/Sidebar';
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Pattern Roadmap
-//
-// Replaces the old Topic-based roadmap with a NeetCode-style pattern
-// hierarchy. Lock state is derived client-side: only the first
-// pattern in display order is unlocked — the rest stay locked until
-// backend progress tracking lands (out of scope for this task).
-//
-// No backend, no GitHub sync, no extension, no solve logic touched.
-// ──────────────────────────────────────────────────────────────────────────────
+// ─── Animated Counter Component ───────────────────────────────────────────────
+const AnimatedCounter = memo(function AnimatedCounter({ value, duration = 800 }) {
+  const [displayValue, setDisplayValue] = useState('0');
 
-const SIDEBAR_W = 224;
+  useEffect(() => {
+    const stringVal = String(value);
+    const match = stringVal.match(/^(\d+)(.*)$/);
+    if (!match) {
+      setDisplayValue(stringVal);
+      return;
+    }
 
-// Stable ordering — the entry at index 0 is the unlocked one.
+    const endNumber = parseInt(match[1], 10);
+    const suffix = match[2] || '';
+    const startTime = performance.now();
+
+    const update = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out quad
+      const easeProgress = progress * (2 - progress);
+      const current = Math.floor(easeProgress * endNumber);
+      
+      setDisplayValue(`${current}${suffix}`);
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      } else {
+        setDisplayValue(stringVal);
+      }
+    };
+
+    requestAnimationFrame(update);
+  }, [value, duration]);
+
+  return <span>{displayValue}</span>;
+});
+
+// ─── Design tokens ─────────────────────────────────────────────────────────────
+const SIDEBAR_W = 220;
+const ORANGE = '#FF6B1A';
+
+// ─── Pattern data ─────────────────────────────────────────────────────────────
+// All fields from original preserved. Added: description, frequency, difficulty.
 const PATTERNS = [
-  // Top-level group with nested sub-patterns.
   {
     id: 'arrays_hashing',
     name: 'Arrays & Hashing',
@@ -34,33 +65,49 @@ const PATTERNS = [
     color: '#FF7A00',
     totalQuestions: 10,
     estimatedMinutes: 90,
+    solvedQuestions: 0,
+    description: 'Foundation of every interview. Master O(1) lookups with hash maps.',
+    frequency: 'Very High',
+    difficulty: 'Easy',
   },
   {
     id: 'two_pointers',
     name: 'Two Pointers',
     icon: '👉',
-    color: '#FFB800',
+    color: '#FF6B1A',
     totalQuestions: 8,
     estimatedMinutes: 75,
+    solvedQuestions: 0,
     parent: 'arrays_hashing',
+    description: 'Reduce O(n²) brute force to O(n) by moving two indices inward.',
+    frequency: 'High',
+    difficulty: 'Easy',
   },
   {
     id: 'sliding_window',
     name: 'Sliding Window',
     icon: '🪟',
-    color: '#F59E0B',
+    color: '#3B82F6',
     totalQuestions: 7,
     estimatedMinutes: 70,
+    solvedQuestions: 0,
     parent: 'arrays_hashing',
+    description: 'Process subarrays in linear time using an expandable window.',
+    frequency: 'High',
+    difficulty: 'Medium',
   },
   {
     id: 'binary_search',
     name: 'Binary Search',
     icon: '🎯',
-    color: '#EF4444',
+    color: '#8B5CF6',
     totalQuestions: 9,
     estimatedMinutes: 85,
+    solvedQuestions: 0,
     parent: 'arrays_hashing',
+    description: 'Halve the search space every step. Goes far beyond sorted arrays.',
+    frequency: 'High',
+    difficulty: 'Medium',
   },
   {
     id: 'prefix_sum',
@@ -69,277 +116,696 @@ const PATTERNS = [
     color: '#EC4899',
     totalQuestions: 5,
     estimatedMinutes: 45,
+    solvedQuestions: 0,
     parent: 'arrays_hashing',
+    description: 'Precompute cumulative sums for instant range-query answers.',
+    frequency: 'Medium',
+    difficulty: 'Easy',
   },
-
-  // Top-level patterns.
-  { id: 'linked_list',     name: 'Linked List',        icon: '🔗', color: '#06B6D4', totalQuestions: 8,  estimatedMinutes: 80  },
-  { id: 'trees',           name: 'Trees',              icon: '🌳', color: '#22C55E', totalQuestions: 12, estimatedMinutes: 120 },
-  { id: 'heap',            name: 'Heap',               icon: '🏔️', color: '#6366F1', totalQuestions: 6,  estimatedMinutes: 60  },
-  { id: 'graph',           name: 'Graph',              icon: '🕸️', color: '#0EA5E9', totalQuestions: 9,  estimatedMinutes: 100 },
-  { id: 'trie',            name: 'Trie',               icon: '🔤', color: '#14B8A6', totalQuestions: 4,  estimatedMinutes: 35  },
-  { id: 'dynamic_programming', name: 'Dynamic Programming', icon: '⚡', color: '#A855F7', totalQuestions: 14, estimatedMinutes: 150 },
-
-  // …room for future patterns.
+  {
+    id: 'linked_list',
+    name: 'Linked List',
+    icon: '🔗',
+    color: '#06B6D4',
+    totalQuestions: 8,
+    estimatedMinutes: 80,
+    solvedQuestions: 0,
+    description: 'Pointer manipulation, reversal, cycle detection and merging.',
+    frequency: 'Medium',
+    difficulty: 'Medium',
+  },
+  {
+    id: 'trees',
+    name: 'Trees',
+    icon: '🌳',
+    color: '#22C55E',
+    totalQuestions: 12,
+    estimatedMinutes: 120,
+    solvedQuestions: 0,
+    description: 'DFS, BFS, BST operations, LCA and tree construction problems.',
+    frequency: 'Very High',
+    difficulty: 'Medium',
+  },
+  {
+    id: 'heap',
+    name: 'Heap / Priority Queue',
+    icon: '🏔️',
+    color: '#EAB308',
+    totalQuestions: 6,
+    estimatedMinutes: 60,
+    solvedQuestions: 0,
+    description: 'Efficiently track k-th largest, streaming medians and merges.',
+    frequency: 'Medium',
+    difficulty: 'Medium',
+  },
+  {
+    id: 'graph',
+    name: 'Graph',
+    icon: '🕸️',
+    color: '#10B981',
+    totalQuestions: 9,
+    estimatedMinutes: 100,
+    solvedQuestions: 0,
+    description: 'BFS/DFS, union-find, topological sort, shortest path algorithms.',
+    frequency: 'High',
+    difficulty: 'Hard',
+  },
+  {
+    id: 'trie',
+    name: 'Trie',
+    icon: '🔤',
+    color: '#14B8A6',
+    totalQuestions: 4,
+    estimatedMinutes: 35,
+    solvedQuestions: 0,
+    description: 'Prefix-tree for fast string search, autocomplete and XOR tricks.',
+    frequency: 'Low',
+    difficulty: 'Medium',
+  },
+  {
+    id: 'dynamic_programming',
+    name: 'Dynamic Programming',
+    icon: '⚡',
+    color: '#A855F7',
+    totalQuestions: 14,
+    estimatedMinutes: 150,
+    solvedQuestions: 0,
+    description: 'Break hard problems into overlapping subproblems. The interview finale.',
+    frequency: 'Very High',
+    difficulty: 'Hard',
+  },
 ];
 
-// Format minutes as "Hh Mm" when ≥ 60, otherwise just "Mm min".
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const isUnlocked = (_pattern, index) => index === 0;
+
 const formatEstimate = (mins) => {
   if (!Number.isFinite(mins) || mins <= 0) return '—';
-  if (mins < 60) return `${mins} min`;
+  if (mins < 60) return `${mins}m`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 };
 
-// Build a lookup so sub-patterns can find their parent card.
-const patternById = new Map(PATTERNS.map((p) => [p.id, p]));
+const FREQ_STYLES = {
+  'Very High': { color: '#FF6B1A', bg: 'rgba(255,107,26,0.1)', border: 'rgba(255,107,26,0.25)' },
+  'High':      { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.25)' },
+  'Medium':    { color: '#eab308', bg: 'rgba(234,179,8,0.1)',  border: 'rgba(234,179,8,0.25)' },
+  'Low':       { color: '#6b7280', bg: 'rgba(107,114,128,0.1)',border: 'rgba(107,114,128,0.25)' },
+};
 
-// Decide which patterns are unlocked. Per spec, only the first
-// pattern in display order is unlocked.
-const isUnlocked = (pattern, index) => index === 0;
+const DIFF_STYLES = {
+  'Easy':   { color: '#22c55e', bg: 'rgba(34,197,94,0.08)',   border: 'rgba(34,197,94,0.2)' },
+  'Medium': { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.2)' },
+  'Hard':   { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.2)' },
+};
 
-export default function Roadmap() {
-  // Tracks which pattern the user clicked. Used for visual feedback
-  // only — the actual navigation to the Pattern Detail page is
-  // handled by useNavigate() below.
-  const [selectedId, setSelectedId] = useState(null);
-  const navigate = useNavigate();
+// ─── Aggregate stats ──────────────────────────────────────────────────────────
+const totalQ = PATTERNS.reduce((s, p) => s + p.totalQuestions, 0);
+const totalSolved = PATTERNS.reduce((s, p) => s + (p.solvedQuestions || 0), 0);
+const completionPct = Math.round((totalSolved / totalQ) * 100);
+const unlockedCount = PATTERNS.filter((_, i) => isUnlocked(_, i)).length;
+const topLevelPatterns = PATTERNS.filter((p) => !p.parent);
 
-  // Top-level patterns drive the row order; sub-patterns hang off
-  // their parent in `PATTERNS` so the rendered tree mirrors the spec.
-  const topLevel = PATTERNS.filter((p) => !p.parent);
+// ─── Circular SVG progress ────────────────────────────────────────────────────
+const CircularProgress = memo(function CircularProgress({ pct, size = 100, stroke = 7, color = ORANGE }) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={stroke} />
+      <motion.circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
+      />
+    </svg>
+  );
+});
 
-  const handlePatternClick = (pattern) => {
-    setSelectedId(pattern.id);
-    // Sub-patterns live under their parent in the data model; the
-    // detail page is keyed on (category, pattern) so sub-patterns
-    // navigate using the same slug pair they carry.
-    const category = pattern.parent || pattern.id;
-    navigate(`/dashboard/roadmap/pattern/${category}/${pattern.id}`);
-  };
-
-  const renderCard = (pattern, index, options = {}) => {
-    const { indent = false, subIndex } = options;
-    const unlocked = isUnlocked(pattern, index);
-    const isSelected = selectedId === pattern.id;
-
-    return (
-      <motion.button
-        key={pattern.id}
-        type="button"
-        onClick={() => unlocked && handlePatternClick(pattern)}
-        disabled={!unlocked}
-        whileHover={unlocked ? { y: -2 } : {}}
-        aria-pressed={isSelected}
-        aria-disabled={!unlocked}
-        className={`group text-left w-full select-none ${
-          unlocked ? 'cursor-pointer' : 'cursor-not-allowed'
-        }`}
+// ─── Gradient progress bar ────────────────────────────────────────────────────
+const GradientBar = memo(function GradientBar({ pct, color, delay = 0 }) {
+  return (
+    <div
+      className="relative rounded-full overflow-hidden"
+      style={{ height: 5, backgroundColor: '#1a1a1a' }}
+    >
+      <motion.div
+        className="absolute inset-y-0 left-0 rounded-full"
         style={{
-          background: isSelected
-            ? `${pattern.color}14`
-            : 'var(--bg-card, #0F0F1A)',
-          border: `1px solid ${
-            isSelected ? pattern.color : 'var(--border, rgba(255,255,255,0.06))'
-          }`,
-          borderLeft: `3px solid ${pattern.color}`,
-          borderRadius: '12px',
-          padding: indent ? '14px 16px' : '18px 20px',
-          opacity: unlocked ? 1 : 0.55,
-          filter: unlocked ? 'none' : 'grayscale(0.4)',
+          background: pct > 0
+            ? `linear-gradient(90deg, ${color}90, ${color})`
+            : 'transparent',
         }}
-      >
-        <div className="flex items-start gap-3">
-          {/* Icon */}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.min(100, pct)}%` }}
+        transition={{ duration: 0.8, ease: 'easeOut', delay }}
+      />
+    </div>
+  );
+});
+
+// ─── Pattern card (3-col grid item) ──────────────────────────────────────────
+const PatternCard = memo(function PatternCard({ pattern, globalIndex, onNavigate }) {
+  const unlocked = isUnlocked(pattern, globalIndex);
+  const pct = pattern.totalQuestions > 0
+    ? Math.round(((pattern.solvedQuestions || 0) / pattern.totalQuestions) * 100)
+    : 0;
+  const freqStyle = FREQ_STYLES[pattern.frequency] || FREQ_STYLES['Low'];
+  const diffStyle = DIFF_STYLES[pattern.difficulty] || DIFF_STYLES['Medium'];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: globalIndex * 0.05, ease: 'easeOut' }}
+      className="relative flex flex-col rounded-2xl overflow-hidden"
+      style={{
+        backgroundColor: '#111111',
+        border: `1px solid ${unlocked ? '#1e1e1e' : '#141414'}`,
+        opacity: unlocked ? 1 : 0.48,
+        boxShadow: unlocked ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
+        transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s, background-color 0.2s',
+        cursor: unlocked ? 'pointer' : 'not-allowed',
+      }}
+      onClick={() => unlocked && onNavigate(pattern)}
+      onMouseEnter={e => {
+        if (!unlocked) return;
+        const el = e.currentTarget;
+        el.style.borderColor = `${pattern.color}45`;
+        el.style.boxShadow = `0 12px 32px rgba(0,0,0,0.35), 0 0 0 1px ${pattern.color}22`;
+        el.style.transform = 'translateY(-3px)';
+        el.style.backgroundColor = `${pattern.color}06`;
+      }}
+      onMouseLeave={e => {
+        if (!unlocked) return;
+        const el = e.currentTarget;
+        el.style.borderColor = '#1e1e1e';
+        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+        el.style.transform = 'translateY(0)';
+        el.style.backgroundColor = '#111111';
+      }}
+    >
+      {/* Top color accent bar */}
+      <div
+        className="absolute top-0 inset-x-0 h-[2px]"
+        style={{ backgroundColor: unlocked ? pattern.color : '#1e1e1e' }}
+      />
+
+      {/* Card body */}
+      <div className="flex flex-col h-full p-5 pt-6 gap-4">
+
+        {/* Header row: icon + lock badge */}
+        <div className="flex items-start justify-between">
           <div
-            className="shrink-0 rounded-lg flex items-center justify-center text-xl"
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
             style={{
-              width: indent ? 36 : 44,
-              height: indent ? 36 : 44,
-              background: `${pattern.color}22`,
-              border: `1px solid ${pattern.color}55`,
+              backgroundColor: unlocked ? `${pattern.color}18` : '#1a1a1a',
+              border: `1px solid ${unlocked ? `${pattern.color}35` : '#2a2a2a'}`,
             }}
-            aria-hidden="true"
           >
             {pattern.icon}
           </div>
 
-          {/* Body */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3
-                className={`font-bold ${
-                  indent ? 'text-sm' : 'text-base'
-                } truncate`}
-                style={{ color: 'var(--text-1, #F1F5F9)' }}
-              >
-                {pattern.name}
-              </h3>
-              {!indent && (
-                <span className="text-[10px] font-mono text-gray-500">
-                  #{String(subIndex ?? index + 1).padStart(2, '0')}
-                </span>
-              )}
-            </div>
-
-            {/* Meta row */}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              <span
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{
-                  background: 'var(--bg-hover, rgba(255,255,255,0.04))',
-                  color: 'var(--text-2, #CBD5E1)',
-                  border: '1px solid var(--border, rgba(255,255,255,0.06))',
-                }}
-              >
-                <ListIcon size={11} />
-                {pattern.totalQuestions} questions
-              </span>
-
-              <span
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{
-                  background: 'var(--bg-hover, rgba(255,255,255,0.04))',
-                  color: 'var(--text-2, #CBD5E1)',
-                  border: '1px solid var(--border, rgba(255,255,255,0.06))',
-                }}
-              >
-                <ClockIcon size={11} />
-                {formatEstimate(pattern.estimatedMinutes)}
-              </span>
-
-              {/* Locked / Unlocked badge */}
-              <span
-                className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto"
-                style={
-                  unlocked
-                    ? {
-                        background: 'rgba(34,197,94,0.10)',
-                        color: '#4ade80',
-                        border: '1px solid rgba(34,197,94,0.25)',
-                      }
-                    : {
-                        background: 'rgba(148,163,184,0.10)',
-                        color: '#94a3b8',
-                        border: '1px solid rgba(148,163,184,0.20)',
-                      }
-                }
-              >
-                {unlocked ? <UnlockIcon size={10} /> : <LockIcon size={10} />}
-                {unlocked ? 'Unlocked' : 'Locked'}
-              </span>
-            </div>
-          </div>
-
-          {/* Chevron (only when unlocked + selected) */}
-          {unlocked && isSelected && (
-            <ChevronRight
-              size={14}
-              className="shrink-0 self-center"
-              style={{ color: pattern.color }}
-            />
+          {!unlocked ? (
+            <span
+              className="flex items-center gap-1 text-[9px] font-black tracking-widest px-2 py-1 rounded-lg uppercase"
+              style={{ backgroundColor: '#141414', color: '#2a2a2a', border: '1px solid #1e1e1e' }}
+            >
+              <LockIcon size={7} /> Locked
+            </span>
+          ) : (
+            <span
+              className="flex items-center gap-1 text-[9px] font-black tracking-widest px-2 py-1 rounded-lg uppercase"
+              style={{
+                backgroundColor: freqStyle.bg,
+                color: freqStyle.color,
+                border: `1px solid ${freqStyle.border}`,
+              }}
+            >
+              <FaFire size={7} /> {pattern.frequency}
+            </span>
           )}
         </div>
-      </motion.button>
-    );
+
+        {/* Name + description */}
+        <div className="flex-1">
+          <h3
+            className="font-black leading-tight mb-1.5"
+            style={{
+              fontSize: '15px',
+              color: unlocked ? '#ffffff' : '#3d3d3d',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            {pattern.name}
+          </h3>
+          <p
+            className="text-[12px] leading-relaxed line-clamp-2"
+            style={{ color: unlocked ? '#6b7280' : '#2a2a2a' }}
+          >
+            {pattern.description}
+          </p>
+        </div>
+
+        {/* Meta pills */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span
+            className="text-[10px] font-semibold px-2 py-1 rounded-lg"
+            style={{ backgroundColor: '#1a1a1a', color: '#4b5563', border: '1px solid #202020' }}
+          >
+            {pattern.totalQuestions}Q
+          </span>
+          <span
+            className="text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1"
+            style={{ backgroundColor: '#1a1a1a', color: '#4b5563', border: '1px solid #202020' }}
+          >
+            <ClockIcon size={8} /> {formatEstimate(pattern.estimatedMinutes)}
+          </span>
+          <span
+            className="text-[10px] font-bold px-2 py-1 rounded-lg"
+            style={{
+              backgroundColor: diffStyle.bg,
+              color: diffStyle.color,
+              border: `1px solid ${diffStyle.border}`,
+            }}
+          >
+            {pattern.difficulty}
+          </span>
+        </div>
+
+        {/* Progress */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold" style={{ color: '#4b5563' }}>
+              {pattern.solvedQuestions || 0} / {pattern.totalQuestions} solved
+            </span>
+            <span
+              className="text-[10px] font-black"
+              style={{ color: pct > 0 ? pattern.color : '#2a2a2a' }}
+            >
+              {pct}%
+            </span>
+          </div>
+          <GradientBar pct={pct} color={pattern.color} delay={globalIndex * 0.05 + 0.2} />
+        </div>
+
+        {/* CTA button */}
+        {unlocked && (
+          <button
+            className="group flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-bold text-[12px] transition-all duration-200"
+            style={{
+              backgroundColor: `${pattern.color}12`,
+              border: `1px solid ${pattern.color}30`,
+              color: pattern.color,
+              cursor: 'pointer',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = `${pattern.color}22`;
+              e.currentTarget.style.borderColor = `${pattern.color}60`;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = `${pattern.color}12`;
+              e.currentTarget.style.borderColor = `${pattern.color}30`;
+            }}
+          >
+            Open Pattern
+            <ArrowRight
+              size={11}
+              className="transition-transform duration-150 group-hover:translate-x-0.5"
+            />
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+// ─── Hero stat chip ───────────────────────────────────────────────────────────
+function StatChip({ label, value, sub, accent }) {
+  return (
+    <div className="flex flex-col">
+      <span
+        className="text-[9px] font-black tracking-widest uppercase mb-1"
+        style={{ color: '#4b5563' }}
+      >
+        {label}
+      </span>
+      <div className="flex items-baseline gap-1">
+        <span
+          className="font-black"
+          style={{ fontSize: '20px', color: accent || '#fff', letterSpacing: '-0.04em' }}
+        >
+          <AnimatedCounter value={value} />
+        </span>
+        {sub && (
+          <span className="text-[11px] font-medium" style={{ color: '#4b5563' }}>
+            {sub}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function Roadmap() {
+  const navigate = useNavigate();
+
+  const handlePatternClick = (pattern) => {
+    const category = pattern.parent || pattern.id;
+    navigate(`/dashboard/roadmap/pattern/${category}/${pattern.id}`);
   };
 
   return (
-    <div className="min-h-screen bg-[#07070F] flex overflow-hidden">
+    <div
+      className="min-h-screen text-white antialiased"
+      style={{ backgroundColor: '#0A0A0A' }}
+    >
       <Sidebar />
 
-      <main
-        className="flex-1 flex flex-col h-screen overflow-hidden"
-        style={{ marginLeft: SIDEBAR_W }}
-      >
-        {/* Header */}
-        <header
-          className="sticky top-0 z-30 shrink-0 px-6 py-4 flex items-center justify-between border-b"
-          style={{
-            background: 'rgba(7,7,15,0.92)',
-            backdropFilter: 'blur(12px)',
-            borderBottomColor: 'var(--border, rgba(255,255,255,0.06))',
-          }}
-        >
-          <div className="flex items-center gap-3 select-none">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
-              <RoadmapIcon size={18} className="text-[#FF7A00]" />
-            </div>
-            <div>
-              <h1 className="text-white font-bold text-lg leading-tight">
-                DSA Pattern Roadmap
-              </h1>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3, #475569)' }}>
-                Master patterns, unlock as you progress
-              </p>
-            </div>
+      <div className="flex flex-col min-h-screen" style={{ marginLeft: SIDEBAR_W }}>
+
+        {/* ════════════════════════════════════════════════════════════
+            HERO HEADER
+            ════════════════════════════════════════════════════════════ */}
+        <header className="px-10 pt-10 pb-10" style={{ borderBottom: '1px solid #141414' }}>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 mb-7">
+            <RoadmapIcon size={12} style={{ color: ORANGE }} />
+            <span
+              className="text-[11px] font-semibold tracking-widest uppercase"
+              style={{ color: '#4b5563' }}
+            >
+              DSA Pattern Roadmap
+            </span>
           </div>
 
-          {/* Overall progress */}
-          <div className="hidden md:flex items-center gap-3">
-            <div className="text-right">
-              <span className="text-[9px] uppercase font-black text-gray-500 tracking-wider block">
-                Unlocked
-              </span>
-              <strong className="text-sm text-[#4ade80] font-mono">
-                1 / {PATTERNS.length}
-              </strong>
+          {/* Title + glass stats panel */}
+          <div className="flex flex-col xl:flex-row xl:items-center gap-8">
+            {/* Left: title copy */}
+            <div className="flex-1 space-y-3">
+              <motion.h1
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="font-black leading-none tracking-tight"
+                style={{
+                  fontSize: 'clamp(36px, 3.8vw, 52px)',
+                  color: '#ffffff',
+                  letterSpacing: '-0.035em',
+                }}
+              >
+                DSA Pattern
+                <span style={{ color: ORANGE }}> Roadmap</span>
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.08 }}
+                className="text-[15px] font-normal max-w-lg"
+                style={{ color: '#6b7280', lineHeight: 1.65 }}
+              >
+                Master the most important coding interview patterns and track your progress through structured practice.
+              </motion.p>
+
+              {/* Overall progress bar */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="pt-2 max-w-lg space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-[10px] font-black tracking-widest uppercase"
+                    style={{ color: '#4b5563' }}
+                  >
+                    Overall Progress
+                  </span>
+                  <span className="text-[11px] font-bold" style={{ color: ORANGE }}>
+                    {completionPct}% Complete
+                  </span>
+                </div>
+                <div
+                  className="relative rounded-full overflow-hidden"
+                  style={{ height: 6, backgroundColor: '#1a1a1a' }}
+                >
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, ${ORANGE}80, ${ORANGE})`,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${completionPct}%` }}
+                    transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                  />
+                </div>
+              </motion.div>
             </div>
+
+            {/* Right: glass stats card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.15 }}
+              className="flex-shrink-0 relative rounded-2xl overflow-hidden"
+              style={{
+                backgroundColor: '#111111',
+                border: '1px solid #1e1e1e',
+                boxShadow: '0 0 0 1px rgba(255,107,26,0.06), 0 20px 40px rgba(0,0,0,0.3)',
+                minWidth: '380px',
+              }}
+            >
+              {/* Top accent */}
+              <div
+                className="absolute top-0 inset-x-0 h-[2px]"
+                style={{ backgroundColor: ORANGE }}
+              />
+
+              <div className="px-7 py-6">
+                {/* Circular ring + text */}
+                <div className="flex items-center gap-6 mb-6">
+                  <div className="relative flex-shrink-0">
+                    <CircularProgress pct={completionPct} size={92} stroke={7} color={ORANGE} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span
+                        className="font-black text-white"
+                        style={{ fontSize: '20px', letterSpacing: '-0.04em' }}
+                      >
+                        <AnimatedCounter value={completionPct} />%
+                      </span>
+                      <span
+                        className="text-[9px] font-semibold uppercase tracking-wider"
+                        style={{ color: '#4b5563' }}
+                      >
+                        done
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <p
+                      className="font-black text-white mb-0.5"
+                      style={{ fontSize: '15px', letterSpacing: '-0.02em' }}
+                    >
+                      {totalSolved === 0 ? 'Just getting started' : `${totalSolved} solved so far`}
+                    </p>
+                    <p className="text-[12px]" style={{ color: '#6b7280' }}>
+                      {totalQ - totalSolved} questions remaining across all patterns
+                    </p>
+                  </div>
+                </div>
+
+                {/* Stat grid (5 fields requested) */}
+                <div
+                  className="grid grid-cols-3 gap-y-5 gap-x-2"
+                  style={{ borderTop: '1px solid #1a1a1a', paddingTop: '20px' }}
+                >
+                  <StatChip label="Total Questions" value={totalQ} />
+                  <StatChip label="Questions Solved" value={totalSolved} accent={ORANGE} />
+                  <StatChip label="Patterns Completed" value={`${unlockedCount}/${PATTERNS.length}`} />
+                  <StatChip label="Overall Progress" value={`${completionPct}%`} />
+                  <StatChip label="Completion Percentage" value={`${completionPct}%`} accent={ORANGE} />
+                </div>
+              </div>
+            </motion.div>
           </div>
         </header>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-4xl mx-auto space-y-4">
-            {/* Intro */}
-            <div className="mb-6">
-              <h2 className="text-white font-bold text-xl">Pattern Roadmap</h2>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-3, #475569)' }}>
-                Each pattern groups questions by the technique used to solve them.
-                Solve the unlocked pattern to advance to the next one.
+        {/* ════════════════════════════════════════════════════════════
+            PATTERN GRID
+            ════════════════════════════════════════════════════════════ */}
+        <main className="flex-1 px-10 py-8">
+          {/* Section header */}
+          <div className="flex items-center justify-between mb-7">
+            <div>
+              <h2
+                className="font-black text-white"
+                style={{ fontSize: '20px', letterSpacing: '-0.03em' }}
+              >
+                All Patterns
+              </h2>
+              <p className="text-[12px] mt-0.5" style={{ color: '#4b5563' }}>
+                Solve the unlocked pattern to advance to the next.
               </p>
             </div>
-
-            {/* Pattern tree */}
-            {topLevel.map((pattern, topIndex) => {
-              // The first top-level card's "global" index in PATTERNS
-              // drives the unlock check — sub-patterns share their
-              // parent's unlock fate when sequential gating lands, but
-              // for now everything except the very first pattern is
-              // locked regardless.
-              const globalIndex = PATTERNS.findIndex((p) => p.id === pattern.id);
-              const children = PATTERNS
-                .map((p, i) => ({ p, i }))
-                .filter(({ p }) => p.parent === pattern.id);
-
-              return (
-                <div key={pattern.id} className="space-y-2">
-                  {renderCard(pattern, globalIndex, { subIndex: topIndex + 1 })}
-
-                  {/* Sub-patterns hang off the parent */}
-                  {children.length > 0 && (
-                    <div
-                      className="ml-4 pl-4 border-l space-y-2"
-                      style={{ borderColor: 'var(--border, rgba(255,255,255,0.06))' }}
-                    >
-                      {children.map(({ p, i }) => renderCard(p, i, { indent: true }))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Footer hint */}
-            <div
-              className="mt-8 text-center text-[11px] select-none"
-              style={{ color: 'var(--text-3, #475569)' }}
-            >
-              More patterns coming soon.
+            <div className="flex items-center gap-3">
+              <span
+                className="text-[10px] font-black px-3 py-1.5 rounded-full tracking-widest uppercase"
+                style={{ backgroundColor: '#1a1a1a', color: '#6b7280', border: '1px solid #222' }}
+              >
+                {PATTERNS.length} patterns
+              </span>
+              <span
+                className="text-[10px] font-black px-3 py-1.5 rounded-full tracking-widest uppercase"
+                style={{
+                  backgroundColor: 'rgba(34,197,94,0.08)',
+                  color: '#22c55e',
+                  border: '1px solid rgba(34,197,94,0.2)',
+                }}
+              >
+                <FaCheckCircle size={8} className="inline mr-1" />
+                {unlockedCount} unlocked
+              </span>
             </div>
           </div>
-        </div>
-      </main>
+
+          {/* ── Top-level patterns grid ── */}
+          {topLevelPatterns.map((topPattern) => {
+            const topGlobalIdx = PATTERNS.findIndex((p) => p.id === topPattern.id);
+            const children = PATTERNS
+              .map((p, i) => ({ p, i }))
+              .filter(({ p }) => p.parent === topPattern.id);
+
+            return (
+              <div key={topPattern.id} className="mb-10">
+                {/* Group label */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div
+                    className="h-px flex-1"
+                    style={{ backgroundColor: '#1a1a1a' }}
+                  />
+                  <span
+                    className="text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full flex-shrink-0"
+                    style={{
+                      backgroundColor: `${topPattern.color}10`,
+                      color: topPattern.color,
+                      border: `1px solid ${topPattern.color}25`,
+                    }}
+                  >
+                    {topPattern.name}
+                  </span>
+                  <div
+                    className="h-px flex-1"
+                    style={{ backgroundColor: '#1a1a1a' }}
+                  />
+                </div>
+
+                {/* Cards in a responsive 3-col grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {/* Parent card */}
+                  <PatternCard
+                    pattern={topPattern}
+                    globalIndex={topGlobalIdx}
+                    onNavigate={handlePatternClick}
+                  />
+
+                  {/* Child cards in same grid */}
+                  {children.map(({ p, i }) => (
+                    <PatternCard
+                      key={p.id}
+                      pattern={p}
+                      globalIndex={i}
+                      onNavigate={handlePatternClick}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Standalone patterns (no parent) that aren't arrays_hashing */}
+          {(() => {
+            const standalones = topLevelPatterns.filter(
+              (p) => p.id !== 'arrays_hashing' && !PATTERNS.some((c) => c.parent === p.id)
+            );
+            if (standalones.length === 0) return null;
+            return (
+              <div className="mb-10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-px flex-1" style={{ backgroundColor: '#1a1a1a' }} />
+                  <span
+                    className="text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: '#1a1a1a', color: '#6b7280', border: '1px solid #222' }}
+                  >
+                    Advanced Patterns
+                  </span>
+                  <div className="h-px flex-1" style={{ backgroundColor: '#1a1a1a' }} />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {standalones.map((p) => {
+                    const gi = PATTERNS.findIndex((x) => x.id === p.id);
+                    return (
+                      <PatternCard
+                        key={p.id}
+                        pattern={p}
+                        globalIndex={gi}
+                        onNavigate={handlePatternClick}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Coming soon */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="flex items-center gap-4 py-6 px-8 rounded-2xl mt-4"
+            style={{ backgroundColor: '#0d0d0d', border: '1px dashed #1a1a1a' }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+              style={{ backgroundColor: '#1a1a1a' }}
+            >
+              🚀
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-white mb-0.5">More patterns coming soon</p>
+              <p className="text-[12px]" style={{ color: '#4b5563' }}>
+                Greedy · Bit Manipulation · Backtracking · Math & Number Theory
+              </p>
+            </div>
+          </motion.div>
+        </main>
+
+        {/* Footer */}
+        <footer
+          className="px-10 py-5 flex items-center justify-between"
+          style={{ borderTop: '1px solid #141414' }}
+        >
+          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>
+            © 2024 CodePrep — DSA Roadmap
+          </span>
+          <div
+            className="flex items-center gap-1.5 text-[11px] font-semibold"
+            style={{ color: '#2a2a2a' }}
+          >
+            <FaTrophy size={10} style={{ color: ORANGE }} />
+            Complete patterns to unlock the next level
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
