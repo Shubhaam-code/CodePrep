@@ -265,11 +265,11 @@ export default function Onboarding() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#FFB800]/2.5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Top Header */}
-      <div className="w-full max-w-2xl flex items-center mb-8 z-10">
+      <div className="w-full max-w-2xl flex justify-center mt-6 mb-12 z-10">
         <img
           src="/imagecopy.png"
           alt="CodePrep AI"
-          className="h-8 sm:h-10 md:h-12 w-auto object-contain"
+          className="h-24 sm:h-32 md:h-40 w-auto object-contain drop-shadow-[0_0_24px_rgba(255,122,0,0.22)]"
         />
       </div>
 

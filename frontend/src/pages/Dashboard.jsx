@@ -18,6 +18,192 @@ import { openGitHubOAuthPopup } from '../utils/githubOAuth';
 const SIDEBAR_W = 220;
 const ORANGE = '#FF6B1A';
 
+// ─── Loading messages that cycle during data fetch ────────────────────────────
+const LOADING_MESSAGES = [
+  'Loading your dashboard...',
+  'Preparing your workspace...',
+  'Fetching your progress...',
+  'Crunching your stats...',
+];
+
+// ─── Branded full-area loading state ─────────────────────────────────────────
+function DashboardLoader() {
+  const [msgIdx, setMsgIdx] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length);
+    }, 1800);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <motion.div
+      key="dashboard-loader"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+      className="space-y-8 w-full relative"
+    >
+      {/* Inject custom shimmer keyframes dynamically to avoid tailwind.config modifications */}
+      <style>{`
+        @keyframes shimmer {
+          0% {
+            background-position: -200% 0;
+          }
+          100% {
+            background-position: 200% 0;
+          }
+        }
+        .shimmer-bg {
+          background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.5s infinite linear;
+        }
+      `}</style>
+
+      {/* Stats Row Skeleton */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 opacity-40">
+        {[...Array(4)].map((_, i) => (
+          <div
+            key={i}
+            className="rounded-xl px-5 py-4 flex items-center gap-4"
+            style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+          >
+            <div className="w-10 h-10 rounded-lg shimmer-bg flex-shrink-0" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-2 w-16 rounded shimmer-bg" />
+              <div className="h-4 w-24 rounded shimmer-bg" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Content Grid Skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 opacity-40">
+        {/* Left Column (Recent Activity + Company Progress) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Recent Activity Skeleton */}
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#1e1e1e]">
+              <div className="h-4 w-32 rounded shimmer-bg" />
+              <div className="h-4 w-12 rounded shimmer-bg" />
+            </div>
+            <div className="space-y-4 py-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 py-2">
+                  <div className="w-2.5 h-2.5 rounded-full shimmer-bg shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/2 rounded shimmer-bg" />
+                    <div className="h-2.5 w-1/4 rounded shimmer-bg" />
+                  </div>
+                  <div className="w-4 h-4 rounded shimmer-bg shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Company Progress Skeleton */}
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#1e1e1e]">
+              <div className="h-4 w-36 rounded shimmer-bg" />
+              <div className="h-4 w-12 rounded shimmer-bg" />
+            </div>
+            <div className="space-y-4 py-2">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex justify-between">
+                    <div className="h-3 w-20 rounded shimmer-bg" />
+                    <div className="h-3 w-16 rounded shimmer-bg" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-1.5 rounded-full shimmer-bg" />
+                    <div className="h-3 w-12 rounded shimmer-bg" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column (Challenge + Extension) */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* GV Challenge Skeleton */}
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{
+              backgroundColor: '#111111',
+              border: '1px solid rgba(255,107,26,0.15)',
+            }}
+          >
+            <div className="flex justify-between">
+              <div className="h-4 w-20 rounded shimmer-bg" />
+              <div className="h-4 w-12 rounded shimmer-bg" />
+            </div>
+            <div className="h-3 w-full rounded shimmer-bg" />
+            <div className="h-3 w-3/4 rounded shimmer-bg" />
+            <div className="h-8 w-full rounded-xl shimmer-bg" />
+          </div>
+
+          {/* Extension Status Skeleton */}
+          <div
+            className="rounded-2xl p-5 space-y-4"
+            style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+          >
+            <div className="flex justify-between pb-3 border-b border-[#1e1e1e]">
+              <div className="h-4 w-28 rounded shimmer-bg" />
+              <div className="h-4 w-16 rounded shimmer-bg" />
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <div className="h-3 w-28 rounded shimmer-bg" />
+                <div className="h-3 w-16 rounded shimmer-bg" />
+              </div>
+              <div className="flex justify-between">
+                <div className="h-3 w-28 rounded shimmer-bg" />
+                <div className="h-3 w-16 rounded shimmer-bg" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Floating Centered Glassmorphic Loading Overlay */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0A0A0A]/40 backdrop-blur-[2.5px] z-20 pointer-events-none rounded-3xl">
+        <div className="flex flex-col items-center justify-center p-8 rounded-3xl border border-white/10 bg-[#0D0D12]/95 shadow-2xl gap-4">
+          <img
+            src="/imagecopy.png"
+            alt="CodePrep AI Logo"
+            className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)]"
+          />
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B1A] animate-ping" />
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={msgIdx}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.25 }}
+                className="text-xs font-bold tracking-wide text-white"
+              >
+                {LOADING_MESSAGES[msgIdx]}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -591,164 +777,151 @@ export default function Dashboard() {
         </header>
 
         {/* ── Page contents ── */}
-        <main className="flex-1 px-10 py-8 space-y-8">
-          {isLoading ? (
-            <>
-              {/* Skeleton loading row */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl p-5"
-                    style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', height: '84px' }}
-                  />
-                ))}
-              </div>
-
-              {/* Skeleton widgets grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '240px', border: '1px solid #1e1e1e' }} />
-                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '300px', border: '1px solid #1e1e1e' }} />
+        <main className="flex-1 px-10 py-8 space-y-8 flex flex-col">
+          <AnimatePresence mode="wait">
+            {isLoading ? (
+              <DashboardLoader key="loader" />
+            ) : (
+              <motion.div
+                key="content"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="space-y-8"
+              >
+                {/* ── STATS ROW ── */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard icon={Code2} label="Questions Solved" sublabel="all-time" value={totalSolved} color={ORANGE} delay={0.05} />
+                  <StatCard icon={Flame} label="Day Streak 🔥" sublabel="current streak" value={streak?.current || 0} color="#f59e0b" delay={0.10} />
+                  <StatCard icon={Bookmark} label="Bookmarks" sublabel="saved questions" value={totalBookmarked} color="#8b5cf6" delay={0.15} />
+                  <StatCard icon={Calendar} label="Last Active" value={formatLastActive(lastActiveDate)} isString color="#22c55e" delay={0.20} />
                 </div>
-                <div className="lg:col-span-1 space-y-6">
-                  <div className="rounded-xl" style={{ backgroundColor: '#111111', height: '180px', border: '1px solid #1e1e1e' }} />
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* ── STATS ROW ── */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={Code2} label="Questions Solved" sublabel="all-time" value={totalSolved} color={ORANGE} delay={0.05} />
-                <StatCard icon={Flame} label="Day Streak 🔥" sublabel="current streak" value={streak?.current || 0} color="#f59e0b" delay={0.10} />
-                <StatCard icon={Bookmark} label="Bookmarks" sublabel="saved questions" value={totalBookmarked} color="#8b5cf6" delay={0.15} />
-                <StatCard icon={Calendar} label="Last Active" value={formatLastActive(lastActiveDate)} isString color="#22c55e" delay={0.20} />
-              </div>
 
-              {isNewUser ? (
-                <NewUserWelcome user={user} />
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Left Column (Recent Activity + Company Progress) */}
-                  <div className="lg:col-span-2 space-y-6">
-                    {/* Recent Activity */}
-                    <div
-                      className="rounded-2xl p-5"
-                      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
-                    >
-                      <div className="flex items-center justify-between mb-4 border-b border-[#1e1e1e] pb-3">
-                        <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
-                          Recent Synced Activity
-                        </h3>
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
-                          LATEST
-                        </span>
-                      </div>
-
-                      {recentSolved.length === 0 ? (
-                        <p className="text-sm py-8 text-center" style={{ color: '#4b5563' }}>
-                          No activity synced yet. Practice a company question to begin.
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-[#181818]">
-                          {recentSolved.slice(0, 5).map((item, i) => (
-                            <div key={item._id || i} className="flex items-center gap-3 py-3.5 first:pt-1 last:pb-1">
-                              {/* Difficulty dot */}
-                              <div
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: diffColor(item.difficulty) }}
-                              />
-
-                              {/* Details */}
-                              <div className="flex-1 overflow-hidden min-w-0">
-                                <a
-                                  href={item.leetcodeUrl || '#'}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm font-bold text-white hover:text-orange-400 block truncate transition-colors"
-                                >
-                                  {item.title}
-                                </a>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-[10px] px-2 py-0.5 rounded bg-[#161616] border border-[#222] font-semibold text-gray-500 capitalize">
-                                    {item.company}
-                                  </span>
-                                  <span className="text-[10px] ml-auto font-mono text-gray-600">
-                                    {timeAgo(item.solvedAt)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <ExternalLink size={10} style={{ color: '#2d2d2d', flexShrink: 0 }} />
-                            </div>
-                          ))}
+                {isNewUser ? (
+                  <NewUserWelcome user={user} />
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left Column (Recent Activity + Company Progress) */}
+                    <div className="lg:col-span-2 space-y-6">
+                      {/* Recent Activity */}
+                      <div
+                        className="rounded-2xl p-5"
+                        style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+                      >
+                        <div className="flex items-center justify-between mb-4 border-b border-[#1e1e1e] pb-3">
+                          <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
+                            Recent Synced Activity
+                          </h3>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
+                            LATEST
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Company Progress */}
-                    <div
-                      className="rounded-2xl p-5"
-                      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
-                    >
-                      <div className="flex items-center justify-between mb-5 border-b border-[#1e1e1e] pb-3">
-                        <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
-                          Company Progress metrics
-                        </h3>
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
-                          METRICS
-                        </span>
-                      </div>
+                        {recentSolved.length === 0 ? (
+                          <p className="text-sm py-8 text-center" style={{ color: '#4b5563' }}>
+                            No activity synced yet. Practice a company question to begin.
+                          </p>
+                        ) : (
+                          <div className="divide-y divide-[#181818]">
+                            {recentSolved.slice(0, 5).map((item, i) => (
+                              <div key={item._id || i} className="flex items-center gap-3 py-3.5 first:pt-1 last:pb-1">
+                                {/* Difficulty dot */}
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: diffColor(item.difficulty) }}
+                                />
 
-                      {solvedByCompany.length === 0 ? (
-                        <p className="text-sm text-center py-6" style={{ color: '#4b5563' }}>
-                          Practice a target company to view detailed progress indicators here.
-                        </p>
-                      ) : (
-                        <div className="space-y-4">
-                          {solvedByCompany.slice(0, 5).map((co) => {
-                            const pct = co.total > 0 ? (co.solved / co.total) * 100 : 0;
-                            return (
-                              <div key={co.company} className="space-y-2">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="font-bold text-white capitalize leading-none">
-                                    {co.company}
-                                  </span>
-                                  <span className="font-semibold text-gray-500">
-                                    {co.solved} / {co.total || '?'} solved
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <GradientBar pct={pct} />
-                                  <button
-                                    onClick={() => navigate('/company/' + co.company)}
-                                    className="text-[10px] font-bold transition-opacity hover:opacity-85 cursor-pointer flex-shrink-0"
-                                    style={{ color: ORANGE }}
+                                {/* Details */}
+                                <div className="flex-1 overflow-hidden min-w-0">
+                                  <a
+                                    href={item.leetcodeUrl || '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-bold text-white hover:text-orange-400 block truncate transition-colors"
                                   >
-                                    Continue →
-                                  </button>
+                                    {item.title}
+                                  </a>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-[#161616] border border-[#222] font-semibold text-gray-500 capitalize">
+                                      {item.company}
+                                    </span>
+                                    <span className="text-[10px] ml-auto font-mono text-gray-600">
+                                      {timeAgo(item.solvedAt)}
+                                    </span>
+                                  </div>
                                 </div>
+
+                                <ExternalLink size={10} style={{ color: '#2d2d2d', flexShrink: 0 }} />
                               </div>
-                            );
-                          })}
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Company Progress */}
+                      <div
+                        className="rounded-2xl p-5"
+                        style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+                      >
+                        <div className="flex items-center justify-between mb-5 border-b border-[#1e1e1e] pb-3">
+                          <h3 className="font-black text-white text-sm" style={{ letterSpacing: '-0.02em' }}>
+                            Company Progress metrics
+                          </h3>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#1a1a1a] text-[#4b5563]">
+                            METRICS
+                          </span>
                         </div>
-                      )}
+
+                        {solvedByCompany.length === 0 ? (
+                          <p className="text-sm text-center py-6" style={{ color: '#4b5563' }}>
+                            Practice a target company to view detailed progress indicators here.
+                          </p>
+                        ) : (
+                          <div className="space-y-4">
+                            {solvedByCompany.slice(0, 5).map((co) => {
+                              const pct = co.total > 0 ? (co.solved / co.total) * 100 : 0;
+                              return (
+                                <div key={co.company} className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-white capitalize leading-none">
+                                      {co.company}
+                                    </span>
+                                    <span className="font-semibold text-gray-500">
+                                      {co.solved} / {co.total || '?'} solved
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <GradientBar pct={pct} />
+                                    <button
+                                      onClick={() => navigate('/company/' + co.company)}
+                                      className="text-[10px] font-bold transition-opacity hover:opacity-85 cursor-pointer flex-shrink-0"
+                                      style={{ color: ORANGE }}
+                                    >
+                                      Continue →
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Column (Challenge + Extension) */}
+                    <div className="lg:col-span-1 space-y-6">
+                      <GVChallengeCard streak={streak} />
+                      <ExtensionStatusCard
+                        extensionConnected={extensionConnected}
+                        handleReconnect={handleReconnectGithub}
+                      />
                     </div>
                   </div>
-
-                  {/* Right Column (Challenge + Extension) */}
-                  <div className="lg:col-span-1 space-y-6">
-                    <GVChallengeCard streak={streak} />
-                    <ExtensionStatusCard
-                      extensionConnected={extensionConnected}
-                      handleReconnect={handleReconnectGithub}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
 
         {/* Footer */}
