@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Environment variables — never commit secrets
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+
+# Build output
+dist
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -34,8 +34,7 @@
       "matches": [
         "http://localhost:5173/*",
         "http://127.0.0.1:5173/*",
-        "https://code-prep-three.vercel.app/*",
-        "https://www.code-prep-three.vercel.app/*"
+        "https://code-prep-three.vercel.app/*"
       ],
       "js": ["contentCodePrep.js"],
       "run_at": "document_idle"

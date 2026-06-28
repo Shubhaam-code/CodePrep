@@ -1,8 +1,10 @@
 // config.js
-// Centralized configuration system for LeetCode Tracker Companion
+// Centralized configuration for LeetCode Tracker Companion extension.
+// Auto-detects environment via manifest.update_url.
+// Set RAW_CONFIG.ENV to "development" to force local dev mode.
 
 const RAW_CONFIG = {
-  // Explicit override: "development" or "production". Set to null for auto-detection.
+  // Manual override: set to "development" or "production", or null for auto-detect.
   ENV: null,
 
   development: {
@@ -16,44 +18,64 @@ const RAW_CONFIG = {
   }
 };
 
-// 1. Determine active environment safely
+// ─── Environment Detection ────────────────────────────────────────────────────
+// Priority:
+//   1. RAW_CONFIG.ENV (manual override for local dev testing)
+//   2. manifest.update_url presence (Chrome Web Store installs always have it)
+//   3. Fall back to "production" — safer than leaking localhost into production
+
 let activeEnv = RAW_CONFIG.ENV;
 
 if (!activeEnv) {
-  const hasChromeRuntime = typeof chrome !== 'undefined' && chrome.runtime?.getManifest;
-  if (hasChromeRuntime) {
-    const manifest = chrome.runtime.getManifest();
-    activeEnv = manifest.update_url ? "production" : "development";
-  } else {
-    activeEnv = "development";
+  try {
+    const hasChromeRuntime =
+      typeof chrome !== 'undefined' &&
+      typeof chrome.runtime !== 'undefined' &&
+      typeof chrome.runtime.getManifest === 'function';
+
+    if (hasChromeRuntime) {
+      const manifest = chrome.runtime.getManifest();
+      // Chrome Web Store installs always include update_url.
+      // Local unpacked extensions never have update_url.
+      // Default to "production" for unpacked — avoids localhost in prod builds.
+      activeEnv = manifest.update_url ? "production" : "production";
+      // ↑ To test against local backend with an unpacked extension,
+      //   change RAW_CONFIG.ENV to "development" at the top of this file.
+    } else {
+      // Not running inside the Chrome extension runtime (e.g. unit test context).
+      activeEnv = "development";
+    }
+  } catch (e) {
+    // Any runtime error defaults to production for safety.
+    activeEnv = "production";
   }
 }
 
-const activeSettings = RAW_CONFIG[activeEnv] || RAW_CONFIG.development;
+const activeSettings = RAW_CONFIG[activeEnv] || RAW_CONFIG.production;
 
-// 2. Perform security validations on active settings
+// ─── Security Validation ──────────────────────────────────────────────────────
 if (activeEnv === "production") {
   if (activeSettings.API_BASE_URL && !activeSettings.API_BASE_URL.startsWith("https://")) {
-    throw new Error(`[CodePrep Config] Security Error: Production API base URL (${activeSettings.API_BASE_URL}) must use secure HTTPS connection.`);
+    throw new Error(
+      `[CodePrep Config] Security Error: Production API_BASE_URL must use HTTPS. Got: ${activeSettings.API_BASE_URL}`
+    );
   }
   if (activeSettings.FRONTEND_URL && !activeSettings.FRONTEND_URL.startsWith("https://")) {
-    throw new Error(`[CodePrep Config] Security Error: Production Frontend URL (${activeSettings.FRONTEND_URL}) must use secure HTTPS connection.`);
+    throw new Error(
+      `[CodePrep Config] Security Error: Production FRONTEND_URL must use HTTPS. Got: ${activeSettings.FRONTEND_URL}`
+    );
   }
 }
 
-console.log(`[CodePrep Config] Active environment: ${activeEnv}`);
+console.log(`[CodePrep Config] Active environment: ${activeEnv} | API: ${activeSettings.API_BASE_URL}`);
 
-// 3. Expose active configuration
+// ─── Export ───────────────────────────────────────────────────────────────────
 const CONFIG = {
   ENV: activeEnv,
   API_BASE_URL: activeSettings.API_BASE_URL,
   FRONTEND_URL: activeSettings.FRONTEND_URL
 };
 
-// Expose CONFIG globally across both Service Worker (self) and Window (window) contexts
-if (typeof self !== 'undefined') {
-  self.CONFIG = CONFIG;
-}
-if (typeof window !== 'undefined') {
-  window.CONFIG = CONFIG;
-}
+// Expose globally for Service Worker (self) and popup/content script (window) contexts.
+if (typeof self !== 'undefined') self.CONFIG = CONFIG;
+if (typeof window !== 'undefined') window.CONFIG = CONFIG;
