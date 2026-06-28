@@ -7,6 +7,7 @@ const GVChallenge = require('../models/GVChallenge');
 const GVChallengeCache = require('../models/GVChallengeCache');
 const User = require('../models/User');
 const Question = require('../models/Question');
+const submissionService = require('../services/submissionService');
 
 const SHEET_CSV_URL =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vT5aAdlz_XNtU9JkpxFhBmI-6ftlWLfy12Hc4nDH7yciZjbI-AkQKiXZ9fMzAjVAleQV69RzqsYyqAp/pub?output=csv';
@@ -168,10 +169,26 @@ router.post('/mark-complete', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'dayNumber, questionTitle, and questionUrl are required.' });
     }
 
+    const day = Number(dayNumber);
+    const syncContext = `gv_day${day}`;
+
+    // 1. Find the underlying Question doc by title
+    let question = await Question.findOne({ title: String(questionTitle).trim() });
+    if (!question) {
+      const escaped = String(questionTitle).trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      question = await Question.findOne({ title: { $regex: new RegExp('^' + escaped + '$', 'i') } });
+    }
+
+    if (!question) {
+      return res.status(404).json({
+        message: 'Question not found in CodePrep database; cannot mark complete.',
+      });
+    }
+
     // Check if already marked
     const existing = await GVChallenge.findOne({
       userId: req.user.id,
-      dayNumber: Number(dayNumber),
+      dayNumber: day,
     });
 
     if (existing) {
@@ -183,23 +200,41 @@ router.post('/mark-complete', authMiddleware, async (req, res) => {
       return res.json({ success: true, alreadyDone: true, dayNumber });
     }
 
-    await GVChallenge.create({
-      userId: req.user.id,
-      dayNumber: Number(dayNumber),
-      questionTitle,
-      questionUrl,
-      solution: solution || '',
-      language: language || '',
-      topic: topic || '',
-      difficulty: difficulty || '',
-      completedAt: new Date(),
-      linkedinPosted: !!linkedinPosted,
-    });
+    console.log(`[mark-complete] Syncing and pushing to GitHub for GV day ${day}: ${question.title}...`);
 
-    return res.json({ success: true, alreadyDone: false, dayNumber });
+    // Call submission service to save submission, update user progress, push to GitHub and update README
+    const result = await submissionService.saveSubmissionAndPush(
+      req.user.id,
+      question._id,
+      solution || '// Solved',
+      language || 'javascript',
+      null, // company
+      'gv', // challenge
+      day,
+      syncContext
+    );
+
+    // Update the GVChallenge record fields if needed (since saveSubmissionAndPush creates it)
+    const gvDoc = await GVChallenge.findOne({ userId: req.user.id, dayNumber: day });
+    if (gvDoc) {
+      if (linkedinPosted) gvDoc.linkedinPosted = true;
+      if (solution) gvDoc.solution = solution;
+      if (language) gvDoc.language = language;
+      if (topic) gvDoc.topic = topic;
+      if (difficulty) gvDoc.difficulty = difficulty;
+      await gvDoc.save();
+    }
+
+    return res.json({
+      success: true,
+      alreadyDone: false,
+      dayNumber,
+      githubSynced: result.githubSynced,
+      githubSyncError: result.githubSyncError || null
+    });
   } catch (error) {
     console.error('mark-complete error:', error.message);
-    return res.status(500).json({ message: 'Server error marking challenge complete.' });
+    return res.status(500).json({ message: 'Server error marking challenge complete: ' + error.message });
   }
 });
 
@@ -241,9 +276,7 @@ router.post('/mark-already-solved', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'User not found.' });
     }
 
-    // 1. Find the underlying Question doc by title (same approach the
-    //    extension sync uses). This is required because
-    //    user.solvedEntries.questionId has a Question ref.
+    // 1. Find the underlying Question doc by title
     let question = await Question.findOne({ title: String(questionTitle).trim() });
     if (!question) {
       const escaped = String(questionTitle).trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -255,10 +288,7 @@ router.post('/mark-already-solved', authMiddleware, async (req, res) => {
       });
     }
 
-    // 2. Idempotent: if this GV day is already recorded in EITHER the
-    //    GVChallenge collection (the source of truth for GV progression)
-    //    OR user.solvedQuestions (kept consistent with the dashboard),
-    //    return early without touching streak or savedQuestions again.
+    // 2. Idempotent check
     const dayRowExists = await GVChallenge.findOne({
       userId: req.user.id,
       dayNumber: day,
@@ -270,64 +300,33 @@ router.post('/mark-already-solved', authMiddleware, async (req, res) => {
       return res.json({ success: true, alreadyDone: true, dayNumber: day });
     }
 
-    // 3. Append the solvedQuestions entry — keeps the dashboard's
-    //    totalSolved accurate.
-    const now = new Date();
-    user.solvedQuestions.push({
-      questionId: question._id,
-      syncContext,
-      solvedAt: now,
+    console.log(`[mark-already-solved] Syncing and pushing to GitHub for GV day ${day}: ${question.title}...`);
+
+    const defaultCode = `// Solved on LeetCode\n// Question: ${question.title}\n// Day: ${day}`;
+    const defaultLanguage = 'javascript';
+
+    // Route to saveSubmissionAndPush to update DB, execute GitHub push, and regenerate README.md
+    const result = await submissionService.saveSubmissionAndPush(
+      req.user.id,
+      question._id,
+      defaultCode,
+      defaultLanguage,
+      null, // company
+      'gv', // challenge
+      day,
+      syncContext
+    );
+
+    return res.json({
+      success: true,
+      alreadyDone: false,
+      dayNumber: day,
+      githubSynced: result.githubSynced,
+      githubSyncError: result.githubSyncError || null
     });
-
-    // 4. Append a GVChallenge row — this is what
-    //    /api/gvchallenge/progress reads to compute totalCompleted and
-    //    unlock the next day. Without this write, the day would not
-    //    advance on the GV Challenge page.
-    try {
-      await GVChallenge.create({
-        userId: req.user.id,
-        dayNumber: day,
-        questionTitle: question.title,
-        questionUrl: question.leetcodeUrl || '',
-        completedAt: now,
-        linkedinPosted: false,
-      });
-    } catch (gvErr) {
-      console.error(`Failed to record GVChallenge row for Day ${day}:`, gvErr.message);
-    }
-
-    // 5. Streak update — mirror submissionService.saveSubmissionAndPush
-    //    so "already solved before" counts toward the streak the same
-    //    way an in-app solve does. Note: this only fires if the
-    //    question was NOT already in solvedQuestions (handled above).
-    const isSameDay = (d1, d2) => {
-      if (!d1 || !d2) return false;
-      return d1.getFullYear() === d2.getFullYear() &&
-             d1.getMonth() === d2.getMonth() &&
-             d1.getDate() === d2.getDate();
-    };
-    const lastSolved = user.streak.lastSolvedDate;
-    if (!lastSolved) {
-      user.streak.current = 1;
-    } else {
-      const yesterday = new Date();
-      yesterday.setDate(now.getDate() - 1);
-      if (isSameDay(lastSolved, now)) {
-        // already counted today
-      } else if (isSameDay(lastSolved, yesterday)) {
-        user.streak.current += 1;
-      } else {
-        user.streak.current = 1;
-      }
-    }
-    user.streak.lastSolvedDate = now;
-
-    await user.save();
-
-    return res.json({ success: true, alreadyDone: false, dayNumber: day });
   } catch (error) {
     console.error('mark-already-solved error:', error.message);
-    return res.status(500).json({ message: 'Server error marking GV day as already solved.' });
+    return res.status(500).json({ message: 'Server error marking GV day as already solved: ' + error.message });
   }
 });
 

@@ -73,9 +73,9 @@ function RepoCard({ slug, profileUrl, delay = 0 }) {
   const repoUrl = profileUrl && slug ? `${profileUrl.replace(/\/$/, '')}/${slug}` : '#';
 
   const iconMap = {
-    'company-preparation': { icon: '🏢', color: '#3b82f6' },
-    'general-prep': { icon: '📐', color: '#22c55e' },
-    'gv-challenge': { icon: '🏆', color: ORANGE },
+    'CodePrep-Companies': { icon: '🏢', color: '#3b82f6' },
+    'CodePrep-DSA-Patterns': { icon: '📐', color: '#22c55e' },
+    'CodePrep-GV-Challenge': { icon: '🏆', color: ORANGE },
   };
   const meta = iconMap[slug] || { icon: '📁', color: '#6b7280' };
 

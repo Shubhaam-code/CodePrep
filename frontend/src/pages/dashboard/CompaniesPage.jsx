@@ -304,6 +304,39 @@ const CompanyCard = memo(function CompanyCard({ company, index, solvedCount }) {
   );
 });
 
+// ─── CompanyCardSkeleton (High fidelity shimmer loader) ───────────────────────
+function CompanyCardSkeleton() {
+  return (
+    <div
+      className="relative flex flex-col rounded-2xl overflow-hidden p-5 pt-6 gap-4"
+      style={{
+        backgroundColor: '#111111',
+        border: '1px solid #1e1e1e',
+        height: '240px',
+      }}
+    >
+      <div className="absolute top-0 inset-x-0 h-[2px] bg-white/5" />
+      <div className="flex items-start justify-between">
+        <div className="w-12 h-12 rounded-xl shimmer-bg" />
+        <div className="h-6 w-16 rounded-lg shimmer-bg" />
+      </div>
+      <div className="flex-1 space-y-2">
+        <div className="h-4 w-3/4 rounded shimmer-bg" />
+        <div className="flex gap-1.5 pt-1">
+          <div className="h-5 w-12 rounded-md shimmer-bg" />
+          <div className="h-5 w-12 rounded-md shimmer-bg" />
+          <div className="h-5 w-12 rounded-md shimmer-bg" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-3 w-1/3 rounded shimmer-bg" />
+        <div className="h-1.5 w-full rounded shimmer-bg" />
+      </div>
+      <div className="h-9 w-full rounded-xl shimmer-bg" />
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CompaniesPage() {
   const [search, setSearch] = useState('');
@@ -326,7 +359,7 @@ export default function CompaniesPage() {
   }, []);
 
   // Fetch enriched company meta
-  const { data: companiesMeta, isLoading, isError } = useQuery({
+  const { data: companiesMeta, isLoading, isError, refetch } = useQuery({
     queryKey: ['companies-meta'],
     queryFn: async () => {
       try {
@@ -611,25 +644,65 @@ export default function CompaniesPage() {
 
           {/* Skeletons loader */}
           {isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl p-5 animate-pulse"
-                  style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', height: '190px' }}
-                />
-              ))}
+            <div className="relative w-full min-h-[400px]">
+              <style>{`
+                @keyframes shimmer {
+                  0% {
+                    background-position: -200% 0;
+                  }
+                  100% {
+                    background-position: 200% 0;
+                  }
+                }
+                .shimmer-bg {
+                  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+                  background-size: 200% 100%;
+                  animation: shimmer 1.5s infinite linear;
+                }
+              `}</style>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-40">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <CompanyCardSkeleton key={i} />
+                ))}
+              </div>
+
+              {/* Centered Glassmorphic Loading Overlay */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0B0F]/40 backdrop-blur-[2px] z-20 pointer-events-none rounded-3xl">
+                <div className="flex flex-col items-center justify-center p-8 rounded-3xl border border-white/10 bg-[#0D0D12]/95 shadow-2xl gap-4">
+                  <img
+                    src="/imagecopy.png"
+                    alt="CodePrep AI Logo"
+                    className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)] animate-pulse"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B1A] animate-ping" />
+                    <span className="text-xs font-bold tracking-wide text-white">
+                      Loading Company Questions...
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Error view */}
           {isError && (
             <div
-              className="text-center py-16 rounded-2xl space-y-2"
+              className="text-center py-16 rounded-2xl space-y-4"
               style={{ border: '1px dashed #1e1e1e', color: '#6b7280' }}
             >
-              <p className="text-[16px] font-bold text-white mb-1">Failed to load company questions</p>
-              <p className="text-[13px]">There was an error communicating with the server. Please reload the page.</p>
+              <div>
+                <p className="text-[16px] font-bold text-white mb-1">Failed to load company questions</p>
+                <p className="text-[13px]">There was an error communicating with the server. Please check your internet connection.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="px-4 py-2 text-xs font-bold rounded-lg bg-[#FF7A00]/15 border border-[#FF7A00]/30 text-[#FFB800] hover:bg-[#FF7A00]/25 transition cursor-pointer"
+              >
+                Retry
+              </button>
             </div>
           )}
 

@@ -7,7 +7,7 @@ class CompanyStrategy extends BaseStrategy {
   }
 
   getRepoName() {
-    return 'company-preparation';
+    return 'CodePrep-Companies';
   }
 
   async getData(userId) {

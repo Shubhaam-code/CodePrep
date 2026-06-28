@@ -8,7 +8,7 @@ class DsaStrategy extends BaseStrategy {
   }
 
   getRepoName() {
-    return 'DSA-Patterns';
+    return 'CodePrep-DSA-Patterns';
   }
 
   async getData(userId) {
@@ -40,32 +40,66 @@ class DsaStrategy extends BaseStrategy {
       }
     }
 
-    const patterns = {};
-    for (const ps of patternSolves) {
-      const patternSlug = ps.patternSlug;
-      if (!patterns[patternSlug]) {
-        patterns[patternSlug] = [];
+    // Get all Questions in database that belong to the DSA Patterns roadmap
+    const allRoadmapQuestions = await Question.find({ roadmapPattern: { $ne: null } }).select('title roadmapPattern').lean();
+    const totalQuestions = allRoadmapQuestions.length;
+
+    const patternsProgress = {};
+    for (const q of allRoadmapQuestions) {
+      const slug = q.roadmapPattern;
+      if (!patternsProgress[slug]) {
+        patternsProgress[slug] = {
+          total: 0,
+          solved: 0,
+          questions: [],
+        };
       }
-      patterns[patternSlug].push(ps.questionId.title);
+      patternsProgress[slug].total += 1;
+
+      const isSolved = patternSolves.some(
+        (ps) => ps.questionId._id.toString() === q._id.toString() && ps.patternSlug === slug
+      );
+      if (isSolved) {
+        patternsProgress[slug].solved += 1;
+      }
+
+      patternsProgress[slug].questions.push({
+        title: q.title,
+        solved: isSolved,
+      });
     }
 
-    return { patterns, totalSolved: patternSolves.length };
+    return {
+      patternsProgress,
+      totalSolved: patternSolves.length,
+      totalQuestions,
+    };
   }
 
   generateReadme(data, repoName) {
-    const { patterns, totalSolved } = data;
+    const { patternsProgress, totalSolved, totalQuestions } = data;
+    const completionPct = totalQuestions > 0 ? Math.round((totalSolved / totalQuestions) * 100) : 0;
 
-    let content = `# ${repoName} – DSA Patterns\n\n**Total Solved:** ${totalSolved}\n\n---\n`;
-    const sortedPatterns = Object.keys(patterns).sort();
-    for (const p of sortedPatterns) {
-      const displayName = p
+    let content = `# ${repoName} – DSA Patterns\n\n`;
+    content += `## 📊 Overall Progress\n\n`;
+    content += `- **Solved Count:** ${totalSolved} / ${totalQuestions}\n`;
+    content += `- **Completion Percentage:** ${completionPct}%\n\n`;
+    content += `## 📂 Patterns Progress\n\n`;
+
+    const sortedPatterns = Object.keys(patternsProgress).sort();
+    for (const slug of sortedPatterns) {
+      const p = patternsProgress[slug];
+      const displayName = slug
         .split('_')
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
-      content += `\n## ${displayName}\n\n`;
-      for (const qTitle of patterns[p].sort()) {
-        content += `- ${qTitle}\n`;
+      const pct = p.total > 0 ? Math.round((p.solved / p.total) * 100) : 0;
+      content += `### ${displayName} (${p.solved} / ${p.total} - ${pct}%)\n`;
+      const sortedQs = [...p.questions].sort((a, b) => a.title.localeCompare(b.title));
+      for (const q of sortedQs) {
+        content += `- [${q.solved ? 'x' : ' '}] ${q.title}\n`;
       }
+      content += `\n`;
     }
     return content;
   }

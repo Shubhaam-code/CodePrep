@@ -9,9 +9,9 @@
  * do not lose access to previously-pushed solutions.
  */
 const REPOS = {
-  company: 'company-preparation',
-  gv:      'gv-challenge',
-  pattern: 'DSA-Patterns',
+  company: 'CodePrep-Companies',
+  gv:      'CodePrep-GV-Challenge',
+  pattern: 'CodePrep-DSA-Patterns',
   sheet:   'sheet-roadmap',
   general: 'general-prep',
 };

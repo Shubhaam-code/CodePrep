@@ -222,7 +222,7 @@ export default function TopicQuestions() {
 
                            {/* LeetCode Link */}
                            <td className="px-6 py-4 text-center">
-                             <QuestionLinks question={q} />
+                             <QuestionLinks question={q} pattern={topicName ? decodeURIComponent(topicName) : null} />
                            </td>
                         </tr>
                       );

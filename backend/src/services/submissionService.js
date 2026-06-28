@@ -4,7 +4,7 @@ const CompanyQuestion = require('../models/CompanyQuestion');
 const User = require('../models/User');
 const GVChallenge = require('../models/GVChallenge');
 const githubRepositoryService = require('./githubRepositoryService');
-const { resolveRepoForContext } = require('./contextRepo');
+const { REPOS, resolveRepoForContext } = require('./contextRepo');
 
 /**
  * Save a submission and push it to GitHub if connected.
@@ -47,40 +47,40 @@ const saveSubmissionAndPush = async (
     throw new Error('Question not found');
   }
 
-  // ── GV Challenge auto-detection ───────────────────────────────────
-  const GVChallengeCache = require('../models/GVChallengeCache');
-  const cachedChallenge = await GVChallengeCache.findOne().sort({ cachedAt: -1 });
-  const gvQuestions = cachedChallenge ? cachedChallenge.questions : [];
-  const matchedGv = gvQuestions.find(
-    q => q.title.toLowerCase().trim() === question.title.toLowerCase().trim()
-  );
-  const isGvExplicit = challenge === 'gv' || (syncContext && syncContext.startsWith('gv_'));
+  // 1. Resolve syncContext and select repository based ONLY on explicit request params
+  let resolvedSyncContext = syncContext;
+  let reason = 'Explicit syncContext from request';
 
-  if (matchedGv && (isGvExplicit || (!company && !pattern && !sheet))) {
-    challenge = 'gv';
-    if (day === null || day === undefined) {
-      day = matchedGv.dayNumber;
+  if (!resolvedSyncContext) {
+    if (challenge === 'gv' && day !== undefined && day !== null) {
+      resolvedSyncContext = `gv_day${day}`;
+      reason = 'Resolved from explicit challenge and day request parameters';
+    } else if (pattern) {
+      resolvedSyncContext = `pattern_${pattern}`;
+      reason = 'Resolved from explicit pattern request parameter';
+    } else if (sheet) {
+      resolvedSyncContext = `sheet_${sheet}`;
+      reason = 'Resolved from explicit sheet request parameter';
+    } else if (company) {
+      resolvedSyncContext = `company_${company}`;
+      reason = 'Resolved from explicit company request parameter';
+    } else {
+      resolvedSyncContext = 'general';
+      reason = 'No context provided, falling back to general';
     }
-    syncContext = `gv_day${day}`;
   }
 
-  // ── Roadmap pattern auto-detection ─────────────────────────────────
-  // If the caller did not explicitly supply a pattern slug but the
-  // question itself is tagged with a roadmap pattern (via the
-  // roadmapPattern field on the Question document), derive the slug
-  // from the document.  This lets the front-end send only questionId
-  // and code without manually repeating the pattern — the back-end
-  // resolves it from the question's own metadata.
-  if (!pattern && question.roadmapPattern && !company && !challenge && !sheet) {
-    pattern = question.roadmapPattern;
-  }
+  const primaryRepoInfo = resolveRepoForContext({ syncContext: resolvedSyncContext });
+  const repo = primaryRepoInfo.repo;
+  const context = primaryRepoInfo.context;
 
-  // When a roadmap pattern is active (either supplied or auto-detected)
-  // and no syncContext was given, build a context token that keeps
-  // the "already solved" deduplication scoped to this pattern.
-  if (pattern && !syncContext) {
-    syncContext = `pattern_${pattern}`;
-  }
+  console.log(`\n--- [GitHub Sync Context Resolution] ---`);
+  console.log(`Incoming syncContext: ${syncContext || 'None'}`);
+  console.log(`Resolved syncContext: ${resolvedSyncContext}`);
+  console.log(`Detected module:      ${context}`);
+  console.log(`Selected repository:  ${repo}`);
+  console.log(`Reason for selection: ${reason}`);
+  console.log(`----------------------------------------\n`);
 
   // 2. Save submission (include company if provided)
   const submission = new Submission({
@@ -107,7 +107,7 @@ const saveSubmissionAndPush = async (
            d1.getDate() === d2.getDate();
   };
 
-  const currentContext = syncContext || "general";
+  const currentContext = resolvedSyncContext || "general";
 
   const alreadySolved = user.solvedQuestions.some(
     (q) =>
@@ -118,37 +118,48 @@ const saveSubmissionAndPush = async (
   if (!alreadySolved) {
     const now = new Date();
     user.solvedQuestions.push({
-    questionId,
-    syncContext: currentContext,
-    solvedAt: now
-  });
+      questionId,
+      syncContext: currentContext,
+      solvedAt: now
+    });
 
     // For GV Challenge syncs, also append a row to the GVChallenge
     // collection. This is the collection /api/gvchallenge/progress
     // reads from to compute totalCompleted + currentStreak, so it's
     // what makes the day advance on the GV Challenge page after an
-    // Extension sync. Without this write, the GV page would never
-    // see the solve (it's intentionally decoupled from
-    // user.solvedQuestions). The user.solvedQuestions push above
-    // remains the source for the dashboard's totalSolved.
-    if (challenge === 'gv' && Number.isFinite(Number(day)) && Number(day) > 0) {
-      try {
-        const dayExists = await GVChallenge.findOne({
-          userId,
-          dayNumber: Number(day),
-        });
-        if (!dayExists) {
-          await GVChallenge.create({
-            userId,
-            dayNumber: Number(day),
-            questionTitle: question.title,
-            questionUrl: question.leetcodeUrl || '',
-            completedAt: now,
-            linkedinPosted: false,
-          });
+    // Extension sync.
+    if (context === 'gv') {
+      let resolvedDay = day;
+      if (resolvedDay === null || resolvedDay === undefined) {
+        const GVChallengeCache = require('../models/GVChallengeCache');
+        const cachedChallenge = await GVChallengeCache.findOne().sort({ cachedAt: -1 });
+        const gvQuestions = cachedChallenge ? cachedChallenge.questions : [];
+        const matchedGv = gvQuestions.find(
+          q => q.title.toLowerCase().trim() === question.title.toLowerCase().trim()
+        );
+        if (matchedGv) {
+          resolvedDay = matchedGv.dayNumber;
         }
-      } catch (gvErr) {
-        console.error(`Failed to record GVChallenge row for Day ${day}:`, gvErr.message);
+      }
+      if (Number.isFinite(Number(resolvedDay)) && Number(resolvedDay) > 0) {
+        try {
+          const dayExists = await GVChallenge.findOne({
+            userId,
+            dayNumber: Number(resolvedDay),
+          });
+          if (!dayExists) {
+            await GVChallenge.create({
+              userId,
+              dayNumber: Number(resolvedDay),
+              questionTitle: question.title,
+              questionUrl: question.leetcodeUrl || '',
+              completedAt: now,
+              linkedinPosted: false,
+            });
+          }
+        } catch (gvErr) {
+          console.error(`Failed to record GVChallenge row for Day ${resolvedDay}:`, gvErr.message);
+        }
       }
     }
 
@@ -189,309 +200,268 @@ console.log("Has Token:", !!user.githubAccessToken);
     const questionTitle = question.title;
 
     // Resolve which dedicated repositories this submission belongs to.
-    const targetRepos = [];
-    const primaryRepoInfo = resolveRepoForContext({
-      company,
-      challenge,
-      pattern,
-      sheet,
-      syncContext,
-    });
-    targetRepos.push({
-      repo: primaryRepoInfo.repo,
-      context: primaryRepoInfo.context,
-    });
+    const targetRepos = [{
+      repo,
+      context,
+    }];
 
+    const extensionMap = {
+      'cpp': 'cpp',
+      'c++': 'cpp',
+      'java': 'java',
+      'python': 'py',
+      'python3': 'py',
+      'javascript': 'js',
+      'js': 'js',
+      'typescript': 'ts',
+      'ts': 'ts',
+      'c': 'c',
+      'csharp': 'cs',
+      'c#': 'cs',
+      'go': 'go',
+      'rust': 'rs',
+      'ruby': 'rb',
+      'swift': 'swift',
+      'kotlin': 'kt',
+      'scala': 'scala',
+      'php': 'php',
+      'html': 'html',
+      'css': 'css',
+      'sql': 'sql'
+    };
 
+    const CONTEXT_STRATEGIES = {
+      company: {
+        getFolderName: async (opts) => {
+          let rawCompany;
+          let basis = 'Explicit company parameter from request';
+          if (opts.company) {
+            rawCompany = opts.company;
+          } else {
+            const companyQuestion = await CompanyQuestion.findOne({ questionId: opts.questionId });
+            rawCompany = companyQuestion ? companyQuestion.company : 'general';
+            basis = `Fallback lookup in CompanyQuestion metadata (result: ${rawCompany})`;
+          }
+          const folder = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
+          console.log(`[Folder Selection] Selected folder: "${folder}" (Reason: ${basis})`);
+          return folder;
+        },
+        getFilename: (title, ext) => {
+          const cleanTitle = title.replace(/[^a-zA-Z0-9]/g, '');
+          return `${cleanTitle}.${ext}`;
+        }
+      },
+      pattern: {
+        getFolderName: async (opts) => {
+          let folder = opts.pattern;
+          let basis = 'Explicit pattern parameter from request';
+          if (!folder) {
+            folder = opts.question.roadmapPattern;
+            basis = `Fallback lookup from Question roadmapPattern metadata (result: ${folder})`;
+          }
+          console.log(`[Folder Selection] Selected folder: "${folder}" (Reason: ${basis})`);
+          return folder;
+        },
+        getFilename: (title, ext) => {
+          const sanitizedTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+          return `${sanitizedTitle}.${ext}`;
+        }
+      },
+      gv: {
+        getFolderName: async (opts) => {
+          let resolvedDay = opts.day;
+          let basis = 'Explicit day parameter from request';
+          if (resolvedDay === null || resolvedDay === undefined) {
+            const GVChallengeCache = require('../models/GVChallengeCache');
+            const cachedChallenge = await GVChallengeCache.findOne().sort({ cachedAt: -1 });
+            const gvQuestions = cachedChallenge ? cachedChallenge.questions : [];
+            const matchedGv = gvQuestions.find(
+              q => q.title.toLowerCase().trim() === opts.question.title.toLowerCase().trim()
+            );
+            if (matchedGv) {
+              resolvedDay = matchedGv.dayNumber;
+              basis = `Fallback lookup from GVChallengeCache metadata (result: Day ${resolvedDay})`;
+            }
+          }
+          resolvedDay = resolvedDay || 1;
+          const folder = `Day-${String(resolvedDay).padStart(2, '0')}`;
+          console.log(`[Folder Selection] Selected folder: "${folder}" (Reason: ${basis})`);
+          return folder;
+        },
+        getFilename: (title, ext) => {
+          const sanitizedTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+          return `${sanitizedTitle}.${ext}`;
+        }
+      },
+      sheet: {
+        getFolderName: async (opts) => {
+          const folder = opts.sheet;
+          console.log(`[Folder Selection] Selected folder: "${folder}" (Reason: Explicit sheet parameter from request)`);
+          return folder;
+        },
+        getFilename: (title, ext) => {
+          const sanitizedTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+          return `${sanitizedTitle}.${ext}`;
+        }
+      },
+      general: {
+        getFolderName: async () => {
+          console.log(`[Folder Selection] Selected folder: "general" (Reason: Default fallback for general context)`);
+          return 'general';
+        },
+        getFilename: (title, ext) => {
+          const cleanTitle = title.replace(/[^a-zA-Z0-9]/g, '');
+          return `${cleanTitle}.${ext}`;
+        }
+      }
+    };
+
+    const ensureFolderExists = async (username, token, folderName, repo) => {
+      const gitkeepPath = `${folderName}/.gitkeep`;
+      console.log(`[Folder Initialization] Checking if folder "${folderName}" exists in repository "${repo}" via "${gitkeepPath}"...`);
+      try {
+        const exists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath, repo);
+        if (exists) {
+          console.log(`[Folder Initialization] Folder "${folderName}" already exists in repository "${repo}".`);
+          return true;
+        }
+      } catch (err) {
+        console.error(`[Folder Initialization] Error checking folder existence for "${folderName}":`, err.message);
+      }
+
+      console.log(`[Folder Initialization] Folder "${folderName}" does not exist in repository "${repo}". Creating "${gitkeepPath}"...`);
+      try {
+        const base64Content = Buffer.from('').toString('base64');
+        const commitMessage = `Initialize folder structure for ${folderName} (Auto-created)`;
+        await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content, repo);
+        console.log(`[Folder Initialization] Successfully created folder "${folderName}" in repository "${repo}".`);
+        return true;
+      } catch (err) {
+        console.error(`[Folder Initialization] Failed to automatically create folder "${folderName}" in repository "${repo}":`, err.message);
+        return false;
+      }
+    };
 
     for (const target of targetRepos) {
       const repo = target.repo;
       const context = target.context;
 
       try {
-        // Ensure repository exists on GitHub
-        let repoExists = false;
-        try {
-          const ensuredRepo = await githubRepositoryService.ensureRepositoryExists(username, token, repo);
-          repoExists = ensuredRepo.exists;
-          if (
-            repo === 'company-preparation' &&
-            ensuredRepo.repositoryUrl &&
-            user.githubRepositoryUrl !== ensuredRepo.repositoryUrl
-          ) {
-            user.githubRepositoryUrl = ensuredRepo.repositoryUrl;
-            await user.save();
-          }
-        } catch (err) {
-          const classified = err.githubError || githubRepositoryService.classifyGitHubError(err, `Failed to prepare repository "${repo}".`);
-          githubSyncError = classified.message;
-          console.error(`Error preparing repository ${repo}:`, classified.message);
+        // 1. Ensure repository exists on GitHub
+        console.log(`[GitHub Repo Service] Ensuring repository "${repo}" exists for user "${username}"...`);
+        const ensuredRepo = await githubRepositoryService.ensureRepositoryExists(username, token, repo);
+        if (!ensuredRepo.exists) {
+          console.warn(`[GitHub Sync] Skip sync: Repository "${repo}" does not exist/cannot be created.`);
+          continue;
         }
 
-        if (repoExists) {
-          let filePath;
-          let isReadyToPush = false;
+        // For companies preparation primary URL tracking
+        if (
+          repo === REPOS.company &&
+          ensuredRepo.repositoryUrl &&
+          user.githubRepositoryUrl !== ensuredRepo.repositoryUrl
+        ) {
+          user.githubRepositoryUrl = ensuredRepo.repositoryUrl;
+          await user.save();
+        }
 
-          const extensionMap = {
-            'cpp': 'cpp',
-            'c++': 'cpp',
-            'java': 'java',
-            'python': 'py',
-            'python3': 'py',
-            'javascript': 'js',
-            'js': 'js',
-            'typescript': 'ts',
-            'ts': 'ts',
-            'c': 'c',
-            'csharp': 'cs',
-            'c#': 'cs',
-            'go': 'go',
-            'rust': 'rs',
-            'ruby': 'rb',
-            'swift': 'swift',
-            'kotlin': 'kt',
-            'scala': 'scala',
-            'php': 'php',
-            'html': 'html',
-            'css': 'css',
-            'sql': 'sql'
-          };
-          const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
+        // 2. Resolve folder name using strategy
+        const strategy = CONTEXT_STRATEGIES[context] || CONTEXT_STRATEGIES.general;
+        const folderName = await strategy.getFolderName({
+          company,
+          challenge,
+          day,
+          pattern,
+          sheet,
+          question,
+          questionId,
+        });
 
-          if (repo === 'DSA-Patterns') {
-            const patternSlug = question.roadmapPattern || pattern;
-            if (patternSlug) {
-              const gitkeepPath = `${patternSlug}/.gitkeep`;
-              let folderReady = false;
-              try {
-                const exists = await githubRepositoryService.checkFileExists(
-                  username, token, gitkeepPath, repo
-                );
-                folderReady = !!exists;
-              } catch (_) {}
+        if (!folderName) {
+          console.warn(`[GitHub Sync] Skip sync: Could not resolve folder name for context "${context}".`);
+          continue;
+        }
 
-              if (!folderReady) {
-                try {
-                  const base64Content = Buffer.from('').toString('base64');
-                  await githubRepositoryService.createFile(
-                    username, token, gitkeepPath,
-                    `Initialize ${patternSlug} folder (Auto-created)`,
-                    base64Content, repo
-                  );
-                  folderReady = true;
-                } catch (err) {
-                  console.error(
-                    `Failed to create pattern folder "${patternSlug}" in ${repo}:`,
-                    err.message
-                  );
-                }
-              }
+        // 3. Ensure folder exists (creates .gitkeep if missing)
+        const folderReady = await ensureFolderExists(username, token, folderName, repo);
+        if (!folderReady) {
+          console.warn(`[GitHub Sync] Skip sync: Target folder "${folderName}" is not ready.`);
+          continue;
+        }
 
-              if (folderReady) {
-                const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-                filePath = `${patternSlug}/${sanitizedTitle}.${ext}`;
-                isReadyToPush = true;
-              }
+        // 4. Determine file path
+        const ext = extensionMap[language.toLowerCase()] || language.toLowerCase();
+        const filename = strategy.getFilename(questionTitle, ext);
+        const filePath = `${folderName}/${filename}`;
+
+        // 5. Check if we should skip push due to deduplication
+        let isReadyToPush = true;
+        if (alreadySolved) {
+          try {
+            const existingFile = await githubRepositoryService.getFileDetails(username, token, filePath, repo);
+            if (existingFile) {
+              console.log(`[GitHub Sync] Skipping push: "${filePath}" already exists in "${repo}" and question is marked solved.`);
+              isReadyToPush = false;
             }
-          } else if (context === 'gv') {
-            const dayFolder = `Day-${String(day).padStart(2, '0')}`;
+          } catch (err) {
+            console.error(`[GitHub Sync] Error probing "${filePath}" in "${repo}":`, err.message);
+          }
+        }
 
-            const ensureFolder = async (folderPath) => {
-              const gitkeepPath = `${folderPath}/.gitkeep`;
-              try {
-                const exists = await githubRepositoryService.checkFileExists(
-                  username,
-                  token,
-                  gitkeepPath,
-                  repo
-                );
-                if (exists) return true;
-              } catch (err) {
-                console.error(`Error checking folder existence for ${folderPath}:`, err.message);
-                return false;
-              }
-
-              try {
-                const base64Content = Buffer.from('').toString('base64');
-                const commitMessage = `Initialize ${folderPath} folder (Auto-created)`;
-                await githubRepositoryService.createFile(
-                  username,
-                  token,
-                  gitkeepPath,
-                  commitMessage,
-                  base64Content,
-                  repo
-                );
-                console.log(`Auto-created folder "${folderPath}" in ${repo}.`);
-                return true;
-              } catch (err) {
-                console.error(`Failed to auto-create folder "${folderPath}" in ${repo}:`, err.message);
-                return false;
-              }
-            };
-
-            const dayReady = await ensureFolder(dayFolder);
-
-            if (dayReady) {
-              const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-              filePath = `${dayFolder}/${sanitizedTitle}.${ext}`;
-              isReadyToPush = true;
+        if (isReadyToPush) {
+          // 6. Push code file
+          let sha = null;
+          try {
+            const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath, repo);
+            if (fileDetails) {
+              sha = fileDetails.sha;
             }
-          } else if (context === 'pattern') {
-            const patternSlug = pattern;
-            if (patternSlug) {
-              const gitkeepPath = `${patternSlug}/.gitkeep`;
-              let folderReady = false;
-              try {
-                const exists = await githubRepositoryService.checkFileExists(
-                  username, token, gitkeepPath, repo
-                );
-                folderReady = !!exists;
-              } catch (_) {}
-
-              if (!folderReady) {
-                try {
-                  const base64Content = Buffer.from('').toString('base64');
-                  await githubRepositoryService.createFile(
-                    username, token, gitkeepPath,
-                    `Initialize ${patternSlug} folder (Auto-created)`,
-                    base64Content, repo
-                  );
-                  folderReady = true;
-                } catch (err) {
-                  console.error(
-                    `Failed to create pattern folder "${patternSlug}" in ${repo}:`,
-                    err.message
-                  );
-                }
-              }
-
-              if (folderReady) {
-                const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-                filePath = `${patternSlug}/${sanitizedTitle}.${ext}`;
-                isReadyToPush = true;
-              }
-            }
-          } else if (context === 'sheet') {
-            const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-            filePath = `${sheet}/${sanitizedTitle}.${ext}`;
-            isReadyToPush = true;
-          } else {
-            let folderCompany;
-            if (company) {
-              folderCompany = company.charAt(0).toUpperCase() + company.slice(1).toLowerCase();
-            } else {
-              const companyQuestion = await CompanyQuestion.findOne({ questionId });
-              const rawCompany = companyQuestion ? companyQuestion.company : 'general';
-              folderCompany = rawCompany.charAt(0).toUpperCase() + rawCompany.slice(1).toLowerCase();
-            }
-
-            const gitkeepPath = `${folderCompany}/.gitkeep`;
-            let folderExists = false;
-            try {
-              folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath, repo);
-            } catch (err) {
-              console.error(`Error checking folder existence during auto-sync for ${folderCompany}:`, err.message);
-            }
-
-            if (!folderExists) {
-              console.log(`Company folder for "${folderCompany}" does not exist in ${repo}. Creating automatically...`);
-              try {
-                const base64Content = Buffer.from('').toString('base64');
-                const commitMessage = `Initialize folder structure for ${folderCompany} (Auto-created)`;
-                await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content, repo);
-                console.log(`Successfully created folder for "${folderCompany}" in ${repo}.`);
-                folderExists = true;
-              } catch (createErr) {
-                console.error(`Failed to automatically create company folder for ${folderCompany}:`, createErr.message);
-              }
-            }
-
-            if (folderExists) {
-              const cleanTitle = questionTitle.replace(/[^a-zA-Z0-9]/g, '');
-              const filename = `${cleanTitle}.${ext}`;
-              filePath = `${folderCompany}/${filename}`;
-              isReadyToPush = true;
-            }
+          } catch (err) {
+            console.error(`[GitHub Sync] Error fetching file details for "${filePath}":`, err.message);
           }
 
-          if (isReadyToPush) {
-            let fileExistsOnGitHub = false;
-            if (alreadySolved) {
-              try {
-                const existing = await githubRepositoryService.getFileDetails(
-                  username,
-                  token,
-                  filePath,
-                  repo
-                );
-                fileExistsOnGitHub = !!existing;
-              } catch (probeErr) {
-                console.error(
-                  `Error probing ${filePath} on ${repo}; defaulting to push attempt:`,
-                  probeErr.message
-                );
-              }
-              if (fileExistsOnGitHub) {
-                console.log(
-                  `Skipping GitHub push: ${filePath} already exists in ${repo} and day is already solved in MongoDB.`
-                );
-                isReadyToPush = false;
-              }
-            }
-          }
+          const base64Content = Buffer.from(code).toString('base64');
+          const commitMessage = sha
+            ? `Update solution for ${questionTitle} (Auto-sync)`
+            : `Add solution for ${questionTitle} (Auto-sync)`;
 
-          if (isReadyToPush) {
-            let sha = null;
+          console.log(`[GitHub Push] Pushing solution to path "${filePath}" in repository "${repo}" (isUpdate: ${!!sha})...`);
+          await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha, repo);
+          console.log(`[GitHub Push] Successfully pushed solution to path "${filePath}" in repository "${repo}".`);
+          githubSynced = true;
+
+          // 7. Update README.md
+          try {
+            console.log(`[README Gen] Compiling progress for repository "${repo}" and generating README.md content...`);
+            const { getReadmeGenerator } = require('./readme');
+            const generator = getReadmeGenerator(repo);
+            const readmeData = await generator.getData(userId);
+            const readmeContent = generator.generateReadme(readmeData, repo);
+            console.log(`[README Gen] Successfully generated README.md content for repository "${repo}".`);
+
+            const readmePath = 'README.md';
+            const readmeBase64 = Buffer.from(readmeContent).toString('base64');
+            const readmeCommitMsg = 'Update README.md with latest progress (Auto-generated)';
+
+            let readmeSha = null;
             try {
-              const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath, repo);
-              if (fileDetails) {
-                sha = fileDetails.sha;
+              const readmeDetails = await githubRepositoryService.getFileDetails(username, token, readmePath, repo);
+              if (readmeDetails) {
+                readmeSha = readmeDetails.sha;
               }
             } catch (err) {
-              console.error('Error fetching file details for sync:', err.message);
+              console.error(`[GitHub Sync] Error fetching README details:`, err.message);
             }
 
-            const base64Content = Buffer.from(code).toString('base64');
-            const commitMessage = sha
-              ? `Update solution for ${questionTitle} (Auto-sync)`
-              : `Add solution for ${questionTitle} (Auto-sync)`;
-
-            await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha, repo);
-            githubSynced = true;
-
-            try {
-              console.log(`Compiling ${repo} progress and updating README.md...`);
-              const { getReadmeGenerator } = require('./readme');
-              const generator = getReadmeGenerator(repo);
-              const readmeData = await generator.getData(userId);
-              const readmeContent = generator.generateReadme(readmeData, repo);
-
-              const readmePath = 'README.md';
-              const readmeBase64 = Buffer.from(readmeContent).toString('base64');
-              const readmeCommitMsg = 'Update README.md with latest progress (Auto-generated)';
-
-              let readmeSha = null;
-              try {
-                const readmeDetails = await githubRepositoryService.getFileDetails(username, token, readmePath, repo);
-                if (readmeDetails) {
-                  readmeSha = readmeDetails.sha;
-                }
-              } catch (err) {
-                console.error('Error fetching README details:', err.message);
-              }
-
-              await githubRepositoryService.createOrUpdateFile(username, token, readmePath, readmeCommitMsg, readmeBase64, readmeSha, repo);
-              console.log(`Successfully updated README.md in ${repo}.`);
-            } catch (readmeErr) {
-              console.error(`Failed to update README.md in ${repo}:`, readmeErr.message);
-            }
+            console.log(`[GitHub Push] Pushing updated README.md to repository "${repo}" (isUpdate: ${!!readmeSha})...`);
+            await githubRepositoryService.createOrUpdateFile(username, token, readmePath, readmeCommitMsg, readmeBase64, readmeSha, repo);
+            console.log(`[GitHub Push] Successfully pushed updated README.md to repository "${repo}".`);
+          } catch (readmeErr) {
+            console.error(`[README Gen] Failed to update README.md in "${repo}":`, readmeErr.message);
           }
-        } else {
-          console.warn(`GitHub repository "${repo}" does not exist for user: ${username}`);
         }
       } catch (repoErr) {
-        console.error(`Error processing target repo ${repo}:`, repoErr.message);
+        console.error(`[GitHub Sync] Error processing target repo "${repo}":`, repoErr.message);
       }
     }
   }

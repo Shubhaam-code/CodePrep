@@ -150,7 +150,7 @@ exports.createCompanyFolder = async (req, res) => {
     // 1. Verify if repository exists
     let repoExists = false;
     try {
-      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token, REPOS.company);
     } catch (err) {
       console.error('Error verifying repository:', err.response ? err.response.data : err.message);
       return res.status(400).json({
@@ -162,7 +162,7 @@ exports.createCompanyFolder = async (req, res) => {
     if (!repoExists) {
       return res.status(400).json({
         success: false,
-        message: 'Repository "company-preparation" does not exist. Please create the repository first.',
+        message: `Repository "${REPOS.company}" does not exist. Please create the repository first.`,
       });
     }
 
@@ -170,7 +170,7 @@ exports.createCompanyFolder = async (req, res) => {
     const gitkeepPath = `${sanitizedCompany}/.gitkeep`;
     let folderExists = false;
     try {
-      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath, REPOS.company);
     } catch (err) {
       console.error('Error checking folder existence:', err.response ? err.response.data : err.message);
       return res.status(400).json({
@@ -191,7 +191,7 @@ exports.createCompanyFolder = async (req, res) => {
     try {
       const base64Content = Buffer.from('').toString('base64');
       const commitMessage = `Initialize folder structure for ${sanitizedCompany}`;
-      await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
+      await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content, REPOS.company);
 
       return res.status(201).json({
         success: true,
@@ -256,7 +256,7 @@ exports.pushQuestion = async (req, res) => {
     // 1. Verify if repository exists
     let repoExists = false;
     try {
-      repoExists = await githubRepositoryService.checkRepositoryExists(username, token);
+      repoExists = await githubRepositoryService.checkRepositoryExists(username, token, REPOS.company);
     } catch (err) {
       console.error('Error verifying repository:', err.response ? err.response.data : err.message);
       return res.status(400).json({ success: false, message: 'Failed to verify repository status on GitHub.' });
@@ -265,7 +265,7 @@ exports.pushQuestion = async (req, res) => {
     if (!repoExists) {
       return res.status(400).json({
         success: false,
-        message: 'Repository "company-preparation" does not exist. Please create the repository first.',
+        message: `Repository "${REPOS.company}" does not exist. Please create the repository first.`,
       });
     }
 
@@ -273,7 +273,7 @@ exports.pushQuestion = async (req, res) => {
     const gitkeepPath = `${sanitizedCompany}/.gitkeep`;
     let folderExists = false;
     try {
-      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath);
+      folderExists = await githubRepositoryService.checkFileExists(username, token, gitkeepPath, REPOS.company);
     } catch (err) {
       console.error('Error verifying folder existence:', err.response ? err.response.data : err.message);
       return res.status(400).json({ success: false, message: 'Failed to verify company folder status on GitHub.' });
@@ -284,7 +284,7 @@ exports.pushQuestion = async (req, res) => {
       try {
         const base64Content = Buffer.from('').toString('base64');
         const commitMessage = `Initialize folder structure for ${sanitizedCompany} (Auto-created)`;
-        await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content);
+        await githubRepositoryService.createFile(username, token, gitkeepPath, commitMessage, base64Content, REPOS.company);
         console.log(`Successfully created folder for "${sanitizedCompany}" on GitHub.`);
         folderExists = true;
       } catch (createErr) {
@@ -331,7 +331,7 @@ exports.pushQuestion = async (req, res) => {
     // 4. Check if the file already exists to retrieve its sha (for updating)
     let sha = null;
     try {
-      const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath);
+      const fileDetails = await githubRepositoryService.getFileDetails(username, token, filePath, REPOS.company);
       if (fileDetails) {
         sha = fileDetails.sha;
       }
@@ -347,7 +347,7 @@ exports.pushQuestion = async (req, res) => {
         ? `Update solution for ${sanitizedTitle}` 
         : `Add solution for ${sanitizedTitle}`;
 
-      await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha);
+      await githubRepositoryService.createOrUpdateFile(username, token, filePath, commitMessage, base64Content, sha, REPOS.company);
 
       return res.status(200).json({
         success: true,

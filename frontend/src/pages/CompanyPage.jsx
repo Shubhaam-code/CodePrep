@@ -96,6 +96,43 @@ const CircularProgress = React.memo(function CircularProgress({ pct, size = 92, 
   );
 });
 
+// ─── QuestionRowSkeleton (High fidelity shimmer loader) ───────────────────────
+function QuestionRowSkeleton({ index }) {
+  return (
+    <div
+      className="relative flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl overflow-hidden"
+      style={{
+        backgroundColor: '#111111',
+        border: '1px solid #1e1e1e',
+        height: '82px',
+      }}
+    >
+      <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-transparent" />
+      <div className="flex items-center gap-4 flex-grow min-w-0">
+        <div className="shrink-0 w-8 h-8 rounded-lg shimmer-bg" />
+        <div className="min-w-0 flex-grow space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-1/3 rounded shimmer-bg" />
+            <div className="h-4 w-12 rounded shimmer-bg" />
+          </div>
+          <div className="flex gap-1.5 pt-0.5">
+            <div className="h-4.5 w-14 rounded shimmer-bg" />
+            <div className="h-4.5 w-14 rounded shimmer-bg" />
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-6 shrink-0 justify-between md:justify-end">
+        <div className="space-y-1.5 w-24">
+          <div className="h-2 w-12 rounded shimmer-bg ml-auto" />
+          <div className="h-1.5 w-full rounded shimmer-bg" />
+        </div>
+        <div className="w-8 h-8 rounded-lg shimmer-bg" />
+        <div className="w-24 h-9 rounded-xl shimmer-bg" />
+      </div>
+    </div>
+  );
+}
+
 export default function CompanyPage() {
   const { name } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,7 +165,7 @@ export default function CompanyPage() {
   const difficulty = searchParams.get('difficulty') || 'All';
 
   // Fetch company questions
-  const { data: companyQuestions, isLoading, isError, error } = useQuery({
+  const { data: companyQuestions, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['companyQuestions', name, timeframe, difficulty],
     queryFn: async () => {
       const diffParam = difficulty === 'All' ? '' : difficulty;
@@ -508,9 +545,45 @@ export default function CompanyPage() {
 
           {/* Loader state */}
           {isLoading && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <FaSpinner className="animate-spin" size={24} style={{ color: ORANGE }} />
-              <p className="text-[12px] text-gray-500 font-semibold">Resolving target questions...</p>
+            <div className="relative w-full min-h-[300px]">
+              <style>{`
+                @keyframes shimmer {
+                  0% {
+                    background-position: -200% 0;
+                  }
+                  100% {
+                    background-position: 200% 0;
+                  }
+                }
+                .shimmer-bg {
+                  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+                  background-size: 200% 100%;
+                  animation: shimmer 1.5s infinite linear;
+                }
+              `}</style>
+              
+              <div className="flex flex-col gap-3 opacity-45">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <QuestionRowSkeleton key={i} />
+                ))}
+              </div>
+
+              {/* Centered Glassmorphic Loading Overlay */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0B0F]/30 backdrop-blur-[1.5px] z-20 pointer-events-none rounded-3xl">
+                <div className="flex flex-col items-center justify-center p-8 rounded-3xl border border-white/10 bg-[#0D0D12]/95 shadow-2xl gap-4">
+                  <img
+                    src="/imagecopy.png"
+                    alt="CodePrep AI Logo"
+                    className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)] animate-pulse"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B1A] animate-ping" />
+                    <span className="text-xs font-bold tracking-wide text-white">
+                      Loading Company Questions...
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -520,8 +593,17 @@ export default function CompanyPage() {
               className="p-6 rounded-2xl text-center max-w-lg mx-auto text-sm space-y-4"
               style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
             >
-              <p className="text-red-400 font-bold">Failed to load company questions</p>
-              <p className="text-gray-500 text-xs">{error?.message || 'Check connection details'}</p>
+              <div>
+                <p className="text-red-400 font-bold">Failed to load company questions</p>
+                <p className="text-gray-500 text-xs">{error?.message || 'Check connection details'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="px-4 py-2 text-xs font-bold rounded-lg bg-[#FF7A00]/15 border border-[#FF7A00]/30 text-[#FFB800] hover:bg-[#FF7A00]/25 transition cursor-pointer"
+              >
+                Retry
+              </button>
             </div>
           )}
 

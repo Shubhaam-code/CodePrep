@@ -107,13 +107,13 @@ router.post('/sync', authMiddleware, async (req, res) => {
     }
 
     // Verify it belongs to at least one CompanyQuestion mapping (only for company-scoped solves)
-    if (!challenge && !pattern && !sheet) {
+    if (!challenge && !pattern && !sheet && !question.roadmapPattern) {
       const isCompanyMapped = await CompanyQuestion.exists({ questionId: question._id });
       if (!isCompanyMapped) {
-        console.warn(`⚠️ Rejecting sync: Question "${title}" is not mapped to any company.`);
+        console.warn(`⚠️ Rejecting sync: Question "${title}" is not mapped to any company or pattern.`);
         return res.status(400).json({
           success: false,
-          error: 'Question is not part of CodePrep company preparation database'
+          error: 'Question is not part of CodePrep company preparation or pattern database'
         });
       }
     }

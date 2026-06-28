@@ -394,27 +394,27 @@ function PatternCardSkeleton() {
       className="relative flex flex-col rounded-2xl overflow-hidden"
       style={{
         backgroundColor: '#111111',
-        border: '1px solid #141414',
+        border: '1px solid #1e1e1e',
         minHeight: '280px',
       }}
     >
       <div className="absolute top-0 inset-x-0 h-[2px] bg-white/5" />
-      <div className="flex flex-col h-full p-5 pt-6 gap-4 animate-pulse">
+      <div className="flex flex-col h-full p-5 pt-6 gap-4">
         <div className="flex items-start justify-between">
-          <div className="w-11 h-11 rounded-xl bg-white/5" />
-          <div className="h-5 w-16 rounded-lg bg-white/5" />
+          <div className="w-11 h-11 rounded-xl shimmer-bg" />
+          <div className="h-5 w-16 rounded-lg shimmer-bg" />
         </div>
         <div className="flex-1 space-y-2">
-          <div className="h-4 w-3/4 rounded bg-white/5" />
-          <div className="h-2.5 w-1/2 rounded bg-white/5" />
+          <div className="h-4 w-3/4 rounded shimmer-bg" />
+          <div className="h-2.5 w-1/2 rounded shimmer-bg" />
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-5 w-10 rounded bg-white/5" />
-          <div className="h-5 w-12 rounded bg-white/5" />
+          <div className="h-5 w-10 rounded shimmer-bg" />
+          <div className="h-5 w-12 rounded shimmer-bg" />
         </div>
         <div className="space-y-2">
-          <div className="h-3 w-1/3 bg-white/5 rounded" />
-          <div className="h-1.5 w-full bg-white/5 rounded" />
+          <div className="h-3 w-1/3 shimmer-bg rounded" />
+          <div className="h-1.5 w-full shimmer-bg rounded" />
         </div>
       </div>
     </div>
@@ -636,10 +636,45 @@ export default function RoadmapList() {
 
           {/* Skeleton loader */}
           {isLoading && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-              {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-                <PatternCardSkeleton key={i} />
-              ))}
+            <div className="relative w-full min-h-[400px]">
+              <style>{`
+                @keyframes shimmer {
+                  0% {
+                    background-position: -200% 0;
+                  }
+                  100% {
+                    background-position: 200% 0;
+                  }
+                }
+                .shimmer-bg {
+                  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
+                  background-size: 200% 100%;
+                  animation: shimmer 1.5s infinite linear;
+                }
+              `}</style>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5 opacity-40">
+                {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                  <PatternCardSkeleton key={i} />
+                ))}
+              </div>
+
+              {/* Centered Glassmorphic Loading Overlay */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0B0F]/45 backdrop-blur-[2px] z-20 pointer-events-none rounded-3xl">
+                <div className="flex flex-col items-center justify-center p-8 rounded-3xl border border-white/10 bg-[#0D0D12]/95 shadow-2xl gap-4">
+                  <img
+                    src="/imagecopy.png"
+                    alt="CodePrep AI Logo"
+                    className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)] animate-pulse"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B1A] animate-ping" />
+                    <span className="text-xs font-bold tracking-wide text-white">
+                      Loading DSA Patterns...
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

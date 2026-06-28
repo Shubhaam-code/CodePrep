@@ -63,7 +63,8 @@ const classifyGitHubError = (error, fallback = 'GitHub request failed.') => {
  * @param {string} repo - Repository name (e.g. "company-preparation")
  * @returns {Promise<boolean>}
  */
-const checkRepositoryExists = async (username, token, repo = 'company-preparation') => {
+const checkRepositoryExists = async (username, token, repo = 'CodePrep-Companies') => {
+  console.log(`[GitHub Repo Service] Checking if repository "${repo}" exists for user "${username}"...`);
   try {
     await axios.get(repoUrl(username, repo), {
       headers: {
@@ -72,11 +73,14 @@ const checkRepositoryExists = async (username, token, repo = 'company-preparatio
         Accept: 'application/vnd.github+json',
       },
     });
+    console.log(`[GitHub Repo Service] Verification success: repository "${repo}" exists.`);
     return true; // Repository exists
   } catch (error) {
     if (error.response && error.response.status === 404) {
+      console.log(`[GitHub Repo Service] Verification success: repository "${repo}" does not exist.`);
       return false; // Repository does not exist
     }
+    console.error(`[GitHub Repo Service] Verification failed for repository "${repo}":`, error.message);
     throw error; // Other error
   }
 };
@@ -87,7 +91,8 @@ const checkRepositoryExists = async (username, token, repo = 'company-preparatio
  * @param {string} repo - Repository name to create
  * @returns {Promise<object>} - Repository details
  */
-const createRepository = async (token, repo = 'company-preparation') => {
+const createRepository = async (token, repo = 'CodePrep-Companies') => {
+  console.log(`[GitHub Repo Service] Creating new public repository "${repo}" on GitHub...`);
   const response = await axios.post(
     'https://api.github.com/user/repos',
     {
@@ -103,10 +108,11 @@ const createRepository = async (token, repo = 'company-preparation') => {
       },
     }
   );
+  console.log(`[GitHub Repo Service] Successfully created repository "${repo}".`);
   return response.data;
 };
 
-const ensureRepositoryExists = async (username, token, repo = 'company-preparation') => {
+const ensureRepositoryExists = async (username, token, repo = 'CodePrep-Companies') => {
   const exists = await checkRepositoryExists(username, token, repo);
   if (exists) {
     return {
@@ -145,7 +151,7 @@ const ensureRepositoryExists = async (username, token, repo = 'company-preparati
  * @param {string} [repo] - Repository name (defaults to "company-preparation")
  * @returns {Promise<boolean>}
  */
-const checkFileExists = async (username, token, path, repo = 'company-preparation') => {
+const checkFileExists = async (username, token, path, repo = 'CodePrep-Companies') => {
   try {
     await axios.get(repoUrl(username, repo, 'contents', path), {
       headers: {
@@ -170,10 +176,10 @@ const checkFileExists = async (username, token, path, repo = 'company-preparatio
  * @param {string} path - File path in the repository (e.g. "Google/.gitkeep")
  * @param {string} message - Commit message
  * @param {string} content - Base64 encoded file content
- * @param {string} [repo] - Repository name (defaults to "company-preparation")
+ * @param {string} [repo] - Repository name (defaults to "CodePrep-Companies")
  * @returns {Promise<object>}
  */
-const createFile = async (username, token, path, message, content, repo = 'company-preparation') => {
+const createFile = async (username, token, path, message, content, repo = 'CodePrep-Companies') => {
   const response = await axios.put(
     repoUrl(username, repo, 'contents', path),
     {
@@ -196,10 +202,10 @@ const createFile = async (username, token, path, message, content, repo = 'compa
  * @param {string} username - GitHub username
  * @param {string} token - GitHub access token
  * @param {string} path - File path in the repository
- * @param {string} [repo] - Repository name (defaults to "company-preparation")
+ * @param {string} [repo] - Repository name (defaults to "CodePrep-Companies")
  * @returns {Promise<object|null>}
  */
-const getFileDetails = async (username, token, path, repo = 'company-preparation') => {
+const getFileDetails = async (username, token, path, repo = 'CodePrep-Companies') => {
   try {
     const response = await axios.get(repoUrl(username, repo, 'contents', path), {
       headers: {
@@ -225,7 +231,7 @@ const getFileDetails = async (username, token, path, repo = 'company-preparation
  * @param {string} message - Commit message
  * @param {string} content - Base64 encoded file content
  * @param {string|null} [sha] - Optional SHA of the existing file (required for updates)
- * @param {string} [repo] - Repository name (defaults to "company-preparation")
+ * @param {string} [repo] - Repository name (defaults to "CodePrep-Companies")
  * @returns {Promise<object>}
  */
 const createOrUpdateFile = async (
@@ -235,7 +241,7 @@ const createOrUpdateFile = async (
   message,
   content,
   sha = null,
-  repo = 'company-preparation'
+  repo = 'CodePrep-Companies'
 ) => {
   const body = {
     message,

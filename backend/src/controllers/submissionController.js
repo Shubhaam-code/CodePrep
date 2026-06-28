@@ -1,6 +1,7 @@
 const submissionService = require('../services/submissionService');
 const User = require('../models/User');
 const Submission = require('../models/Submission');
+const { REPOS } = require('../services/contextRepo');
 
 /**
  * Handle question solving submission and auto-syncing with GitHub.
@@ -174,7 +175,7 @@ exports.getCompanyHistory = async (req, res) => {
           const filePath = `${folderCompany}/${cleanTitle}.${ext}`;
           githubUrl =
             `https://github.com/${encodeURIComponent(user.githubUsername)}` +
-            `/company-preparation/blob/main/${filePath
+            `/${REPOS.company}/blob/main/${filePath
               .split('/')
               .map((s) => encodeURIComponent(s))
               .join('/')}`;
