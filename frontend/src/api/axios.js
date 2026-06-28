@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { store } from '../store/store';
 import { logout } from '../store/authSlice';
+import { API_BASE_URL } from '../config';
 
-// Create an Axios instance with base URL from environment variables
+// Create an Axios instance with base URL from centralized configuration
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },

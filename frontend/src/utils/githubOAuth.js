@@ -1,5 +1,6 @@
 import apiClient from '../api/axios';
 import { setUser } from '../store/authSlice';
+import { API_BASE_URL } from '../config';
 
 export function openGitHubOAuthPopup({
   dispatch,
@@ -8,7 +9,7 @@ export function openGitHubOAuthPopup({
   onError,
   onClosed,
 } = {}) {
-  const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
+  const baseUrl = API_BASE_URL;
   const apiOrigin = new URL(baseUrl, window.location.origin).origin;
   const token = localStorage.getItem('token');
 
