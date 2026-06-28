@@ -1,7 +1,7 @@
 const REPO_DISPLAY_NAMES = {
   'company-preparation': 'Company Preparation',
   'general-prep': 'DSA Patterns',
-  'gvishwanathan-challenge': 'GVishwanathan Challenge'
+  'gv-challenge': 'GVishwanathan Challenge'
 };
 
 /**

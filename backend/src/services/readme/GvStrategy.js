@@ -8,7 +8,7 @@ class GvStrategy extends BaseStrategy {
   }
 
   getRepoName() {
-    return 'gvishwanathan-challenge';
+    return 'gv-challenge';
   }
 
   async getData(userId) {
@@ -25,30 +25,13 @@ class GvStrategy extends BaseStrategy {
   generateReadme(data, repoName) {
     const { gvDays, totalCompleted, currentStreak } = data;
 
-    let content = `# ${repoName} – GV Challenge\n\n`;
-    content += `**Total Days Completed:** ${totalCompleted}\n`;
-    if (currentStreak > 0) {
-      content += `**Current Streak:** ${currentStreak} day(s)\n`;
-    }
-    content += '\n---\n';
-
+    let content = `# G. Vishwanathan Challenge\n\n`;
+    content += `Completed:\n`;
     for (const day of gvDays) {
-      content += `\n## Day ${day.dayNumber}\n\n`;
-      content += `**Question:** ${day.questionTitle}\n`;
-      if (day.questionUrl) {
-        content += `**URL:** ${day.questionUrl}\n`;
-      }
-      if (day.topic) {
-        content += `**Topic:** ${day.topic}\n`;
-      }
-      if (day.difficulty) {
-        content += `**Difficulty:** ${day.difficulty}\n`;
-      }
-      const dateStr = day.completedAt
-        ? new Date(day.completedAt).toISOString().split('T')[0]
-        : 'N/A';
-      content += `**Completed:** ${dateStr}\n`;
+      content += `✔ Day ${day.dayNumber}\n`;
     }
+    content += `\nCurrent Streak: ${currentStreak}\n\n`;
+    content += `Total Completed: ${totalCompleted} / 86\n`;
     return content;
   }
 }

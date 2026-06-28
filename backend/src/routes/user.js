@@ -184,6 +184,9 @@ router.get('/dashboard', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    const { updateLastActive } = require('../services/activityService');
+    updateLastActive(req.user.id);
+
     const totalSolved = user.solvedQuestions.length;
     const totalBookmarked = user.bookmarks.length;
 
@@ -231,7 +234,8 @@ router.get('/dashboard', async (req, res) => {
       totalBookmarked,
       streak: user.streak,
       solvedByCompany,
-      recentSolved
+      recentSolved,
+      lastActiveDate: user.lastActive
     });
   } catch (error) {
     console.error('Error compiling dashboard:', error);

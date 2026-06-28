@@ -26,15 +26,53 @@ function getGreeting() {
 }
 
 function formatLastActive(dateStr) {
-  if (!dateStr) return 'Not active';
+  if (!dateStr) return 'First Login';
   const d = new Date(dateStr);
   const now = new Date();
-  const todayStr = now.toDateString();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  if (diffMins < 1) {
+    return 'Just now';
+  }
+  if (diffMins < 60) {
+    return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  if (diffHours < 24) {
+    const isToday = d.toDateString() === now.toDateString();
+    if (diffHours < 12) {
+      return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    } else if (isToday) {
+      return `Today, ${formatTime(d)}`;
+    }
+  }
+
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) {
+    return `Today, ${formatTime(d)}`;
+  }
+
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === todayStr) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isYesterday) {
+    return `Yesterday, ${formatTime(d)}`;
+  }
+
+  const isSameYear = d.getFullYear() === now.getFullYear();
+  const day = d.getDate();
+  const month = d.toLocaleDateString('en-US', { month: 'short' });
+  if (isSameYear) {
+    return `${day} ${month}, ${formatTime(d)}`;
+  } else {
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}, ${formatTime(d)}`;
+  }
 }
 
 function timeAgo(dateStr) {

@@ -90,6 +90,9 @@ router.post('/login', async (req, res) => {
 
     const token = generateToken(user._id);
 
+    const { updateLastActive } = require('../services/activityService');
+    await updateLastActive(user._id);
+
     res.status(200).json({
       token,
       user: {
@@ -105,7 +108,8 @@ router.post('/login', async (req, res) => {
         githubRepositoryUrl: user.githubRepositoryUrl,
         linkedinConnected: user.linkedinConnected,
         linkedinProfileUrl: user.linkedinProfileUrl,
-        isOnboarded: user.isOnboarded
+        isOnboarded: user.isOnboarded,
+        lastActive: user.lastActive
       }
     });
   } catch (error) {
@@ -183,6 +187,9 @@ router.post('/firebase', async (req, res) => {
     console.log('[Backend Auth] Generating local session JWT for user ID:', user._id);
     const token = generateToken(user._id);
 
+    const { updateLastActive } = require('../services/activityService');
+    await updateLastActive(user._id);
+
     console.log('[Backend Auth] Sending successful auth response payload.');
     res.status(200).json({
       token,
@@ -199,7 +206,8 @@ router.post('/firebase', async (req, res) => {
         githubRepositoryUrl: user.githubRepositoryUrl,
         linkedinConnected: user.linkedinConnected,
         linkedinProfileUrl: user.linkedinProfileUrl,
-        isOnboarded: user.isOnboarded
+        isOnboarded: user.isOnboarded,
+        lastActive: user.lastActive
       }
     });
   } catch (error) {
@@ -221,6 +229,10 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    const { updateLastActive } = require('../services/activityService');
+    updateLastActive(req.user.id);
+
     res.status(200).json(user);
   } catch (error) {
     console.error('Fetch profile error:', error);

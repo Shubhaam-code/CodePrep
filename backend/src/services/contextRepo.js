@@ -10,7 +10,7 @@
  */
 const REPOS = {
   company: 'company-preparation',
-  gv:      'gvishwanathan-challenge',
+  gv:      'gv-challenge',
   pattern: 'DSA-Patterns',
   sheet:   'sheet-roadmap',
   general: 'general-prep',

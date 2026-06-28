@@ -11,7 +11,7 @@ const { resolveRepoForContext } = require('./contextRepo');
  *
  * Solutions are routed to a dedicated GitHub repository based on the
  * learning context:
- *   - GV Challenge      → gvishwanathan-challenge
+ *   - GV Challenge      → gv-challenge
  *   - Pattern roadmap   → DSA-Patterns
  *   - Sheet roadmap     → sheet-roadmap
  *   - Company questions → company-preparation
@@ -45,6 +45,23 @@ const saveSubmissionAndPush = async (
   const question = await Question.findById(questionId);
   if (!question) {
     throw new Error('Question not found');
+  }
+
+  // ── GV Challenge auto-detection ───────────────────────────────────
+  const GVChallengeCache = require('../models/GVChallengeCache');
+  const cachedChallenge = await GVChallengeCache.findOne().sort({ cachedAt: -1 });
+  const gvQuestions = cachedChallenge ? cachedChallenge.questions : [];
+  const matchedGv = gvQuestions.find(
+    q => q.title.toLowerCase().trim() === question.title.toLowerCase().trim()
+  );
+  const isGvExplicit = challenge === 'gv' || (syncContext && syncContext.startsWith('gv_'));
+
+  if (matchedGv && (isGvExplicit || (!company && !pattern && !sheet))) {
+    challenge = 'gv';
+    if (day === null || day === undefined) {
+      day = matchedGv.dayNumber;
+    }
+    syncContext = `gv_day${day}`;
   }
 
   // ── Roadmap pattern auto-detection ─────────────────────────────────
@@ -282,8 +299,7 @@ console.log("Has Token:", !!user.githubAccessToken);
               }
             }
           } else if (context === 'gv') {
-            const rootFolder = 'GVishwanathanChallenge';
-            const dayFolder  = `DAY${Number(day)}`;
+            const dayFolder = `Day-${String(day).padStart(2, '0')}`;
 
             const ensureFolder = async (folderPath) => {
               const gitkeepPath = `${folderPath}/.gitkeep`;
@@ -319,12 +335,11 @@ console.log("Has Token:", !!user.githubAccessToken);
               }
             };
 
-            const rootReady = await ensureFolder(rootFolder);
-            const dayReady  = rootReady ? await ensureFolder(`${rootFolder}/${dayFolder}`) : false;
+            const dayReady = await ensureFolder(dayFolder);
 
             if (dayReady) {
               const sanitizedTitle = questionTitle.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
-              filePath = `${rootFolder}/${dayFolder}/${sanitizedTitle}.${ext}`;
+              filePath = `${dayFolder}/${sanitizedTitle}.${ext}`;
               isReadyToPush = true;
             }
           } else if (context === 'pattern') {

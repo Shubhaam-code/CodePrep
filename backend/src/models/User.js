@@ -98,6 +98,10 @@ solvedQuestions: [
       type: Boolean,
       default: false,
     },
+    lastActive: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -75,7 +75,7 @@ function RepoCard({ slug, profileUrl, delay = 0 }) {
   const iconMap = {
     'company-preparation': { icon: '🏢', color: '#3b82f6' },
     'general-prep': { icon: '📐', color: '#22c55e' },
-    'gvishwanathan-challenge': { icon: '🏆', color: ORANGE },
+    'gv-challenge': { icon: '🏆', color: ORANGE },
   };
   const meta = iconMap[slug] || { icon: '📁', color: '#6b7280' };
 
