@@ -71,7 +71,7 @@ const saveSubmissionAndPush = async (
   // from the document.  This lets the front-end send only questionId
   // and code without manually repeating the pattern — the back-end
   // resolves it from the question's own metadata.
-  if (!pattern && question.roadmapPattern) {
+  if (!pattern && question.roadmapPattern && !company && !challenge && !sheet) {
     pattern = question.roadmapPattern;
   }
 
@@ -202,12 +202,7 @@ console.log("Has Token:", !!user.githubAccessToken);
       context: primaryRepoInfo.context,
     });
 
-    if (question.roadmapPattern && primaryRepoInfo.repo !== 'DSA-Patterns') {
-      targetRepos.push({
-        repo: 'DSA-Patterns',
-        context: 'pattern',
-      });
-    }
+
 
     for (const target of targetRepos) {
       const repo = target.repo;

@@ -19,9 +19,8 @@ class CompanyStrategy extends BaseStrategy {
     const companySolves = user.solvedQuestions.filter(
       (sq) =>
         sq.questionId &&
-        (!sq.syncContext ||
-          sq.syncContext === 'general' ||
-          sq.syncContext.startsWith('company_'))
+        sq.syncContext &&
+        sq.syncContext.startsWith('company_')
     );
 
     return {

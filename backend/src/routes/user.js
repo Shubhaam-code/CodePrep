@@ -207,17 +207,21 @@ router.get('/dashboard', async (req, res) => {
     const companyTotals = {};
     const companySolved = {};
     
-    const solvedQuestionSet = new Set(
-      user.solvedQuestions.map(sq => 
-        sq.questionId ? sq.questionId._id.toString() : sq.questionId.toString()
-      )
-    );
+    const companySolvedSet = new Set();
+    user.solvedQuestions.forEach(sq => {
+      if (sq.questionId && sq.syncContext && sq.syncContext.startsWith('company_')) {
+        const companyName = sq.syncContext.replace('company_', '').toLowerCase();
+        const qIdStr = sq.questionId._id ? sq.questionId._id.toString() : sq.questionId.toString();
+        companySolvedSet.add(`${qIdStr}_${companyName}`);
+      }
+    });
 
     allCompanyQuestions.forEach(cq => {
       if (cq.questionId) {
         const qIdStr = cq.questionId.toString();
+        const companyName = cq.company.toLowerCase();
         companyTotals[cq.company] = (companyTotals[cq.company] || 0) + 1;
-        if (solvedQuestionSet.has(qIdStr)) {
+        if (companySolvedSet.has(`${qIdStr}_${companyName}`)) {
           companySolved[cq.company] = (companySolved[cq.company] || 0) + 1;
         }
       }

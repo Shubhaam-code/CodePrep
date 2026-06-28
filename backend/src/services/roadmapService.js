@@ -57,19 +57,27 @@ const aggregatePatternStats = async () => {
 };
 
 /**
- * Fetch the set of Question _id strings this user has ever
- * submitted. Single round-trip; lean() so we don't pull Mongoose
- * overhead into a Set. Phase 5.4 — solvedQuestions / progress
- * are computed downstream from this Set.
+const isGeneralPrepContext = (ctx) => {
+  if (!ctx || ctx === 'general') return true;
+  if (ctx.startsWith('pattern_') || ctx.startsWith('sheet_')) return true;
+  return false;
+};
+
+/**
+ * Fetch the set of Question _id strings this user has solved in
+ * a General Prep/pattern/sheet context.
  */
 const fetchSolvedQuestionIds = async (userId) => {
   if (!userId) return new Set();
-  const subs = await Submission.find({ userId })
-    .select('questionId')
-    .lean();
+  const User = mongoose.model('User');
+  const user = await User.findById(userId).select('solvedQuestions').lean();
+  if (!user || !user.solvedQuestions) return new Set();
+
   const out = new Set();
-  for (const s of subs) {
-    if (s.questionId) out.add(String(s.questionId));
+  for (const sq of user.solvedQuestions) {
+    if (sq.questionId && isGeneralPrepContext(sq.syncContext)) {
+      out.add(String(sq.questionId));
+    }
   }
   return out;
 };
@@ -241,11 +249,14 @@ exports.getPatternById = async (patternId, userId) => {
   // — and lean() so we don't pull Mongoose overhead into a Set.
   const solvedSet = new Set();
   if (userId) {
-    const submissions = await Submission.find({ userId })
-      .select('questionId')
-      .lean();
-    for (const s of submissions) {
-      if (s.questionId) solvedSet.add(String(s.questionId));
+    const User = mongoose.model('User');
+    const user = await User.findById(userId).select('solvedQuestions').lean();
+    if (user && user.solvedQuestions) {
+      for (const sq of user.solvedQuestions) {
+        if (sq.questionId && isGeneralPrepContext(sq.syncContext)) {
+          solvedSet.add(String(sq.questionId));
+        }
+      }
     }
   }
 

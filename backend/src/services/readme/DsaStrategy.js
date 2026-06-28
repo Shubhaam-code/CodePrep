@@ -26,8 +26,6 @@ class DsaStrategy extends BaseStrategy {
       let patternSlug = null;
       if (sq.syncContext && sq.syncContext.startsWith('pattern_')) {
         patternSlug = sq.syncContext.replace('pattern_', '');
-      } else if (sq.questionId.roadmapPattern) {
-        patternSlug = sq.questionId.roadmapPattern;
       }
 
       if (patternSlug) {
