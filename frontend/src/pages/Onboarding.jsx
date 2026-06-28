@@ -13,7 +13,6 @@ import {
   FaSpinner,
   FaCheckCircle,
   FaExclamationCircle,
-  FaPuzzlePiece,
   FaRocket,
   FaCheck,
   FaDownload,
@@ -577,13 +576,20 @@ export default function Onboarding() {
                           >
                             <FaDownload size={12} /> Download Extension
                           </a>
-                          <button
-                            onClick={() => setShowGuide(true)}
+                          <a
+                            href="/downloads/LeetCode_Extension_Setup_Guide.pdf"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="cursor-pointer px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 font-extrabold text-xs text-gray-300 hover:text-white rounded-xl flex items-center justify-center gap-2 transition"
                           >
-                            <FaPuzzlePiece size={12} /> View Installation Guide
-                          </button>
+                            📘 Installation Guide (PDF)
+                          </a>
                         </div>
+
+                        <p className="text-gray-400 text-[11px] text-center max-w-md mx-auto leading-relaxed">
+                          Need help installing the extension?<br />
+                          Download the step-by-step installation guide (PDF) and follow the screenshots.
+                        </p>
 
                         <div className="flex justify-center">
                           <button
