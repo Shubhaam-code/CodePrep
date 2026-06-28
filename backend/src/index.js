@@ -29,7 +29,20 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://code-prep-three.vercel.app'
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('chrome-extension://')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'), false);
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 // Set Cross-Origin-Opener-Policy to allow Firebase Auth popups to communicate

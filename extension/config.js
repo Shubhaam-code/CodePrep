@@ -11,8 +11,8 @@ const RAW_CONFIG = {
   },
 
   production: {
-    API_BASE_URL: "https://api.codeprep.com", // Modify with your deployed backend URL
-    FRONTEND_URL: "https://codeprep.com"       // Modify with your deployed frontend URL
+    API_BASE_URL: "https://codeprep-w0nr.onrender.com",
+    FRONTEND_URL: "https://code-prep-three.vercel.app"
   }
 };
 
