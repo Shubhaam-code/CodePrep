@@ -11,8 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
-.env.*
+
+# Environment variable files
+# .env        — committed (Firebase public config keys only, no passwords)
+# .env.production — committed (public Render URL, no secrets)
+.env.development
+.env.development.local
+.env.production.local
+.env.local
+.env.*.local
 
 # Editor directories and files
 .vscode/*
@@ -24,7 +31,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-.env
-.env.development
-.env.production
