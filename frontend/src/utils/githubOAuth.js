@@ -25,12 +25,17 @@ export function openGitHubOAuthPopup({
     return null;
   }
 
+  const openedAt = Date.now();
   let settled = false;
-  let closeTimer;
 
   const cleanup = () => {
     window.removeEventListener('message', handleMessage);
-    if (closeTimer) clearInterval(closeTimer);
+    window.removeEventListener('focus', handleFocus);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('storage', handleStorage);
+    try {
+      oauthChannel.close();
+    } catch (e) {}
   };
 
   const refreshUser = async () => {
@@ -46,67 +51,110 @@ export function openGitHubOAuthPopup({
     return profileRes.data;
   };
 
-  async function handleMessage(event) {
-    if (event.origin !== window.location.origin && event.origin !== apiOrigin) return;
-    if (event.data?.provider !== 'github') return;
-    if (event.data?.type !== 'oauth-success' && event.data?.type !== 'oauth-error') return;
-
+  const handleOAuthResult = async (data) => {
+    if (settled) return;
     settled = true;
     cleanup();
 
-    if (event.data.type === 'oauth-error' || event.data.success === false) {
-      onError?.(event.data.message || 'GitHub authorization was cancelled.');
-      if (popup && !popup.closed) popup.close();
+    if (data.type === 'oauth-error' || data.success === false) {
+      onError?.(data.message || 'GitHub authorization was cancelled.');
       return;
     }
 
     try {
       await refreshUser();
-      onSuccess?.(event.data);
+      onSuccess?.(data);
     } catch (err) {
       console.error('[GitHub OAuth] Failed to refresh authenticated user:', err);
       onError?.('GitHub connected, but the app could not refresh your profile. Please try again.');
-    } finally {
-      if (popup && !popup.closed) popup.close();
+    }
+  };
+
+  // 1. Message listener (postMessage - fallback if window.opener is somehow preserved)
+  function handleMessage(event) {
+    if (event.origin !== window.location.origin && event.origin !== apiOrigin) return;
+    if (event.data?.provider !== 'github') return;
+    if (event.data?.type !== 'oauth-success' && event.data?.type !== 'oauth-error') return;
+
+    handleOAuthResult(event.data);
+  }
+
+  // 2. BroadcastChannel listener (primary modern same-origin communication)
+  const oauthChannel = new BroadcastChannel('github-oauth-channel');
+  oauthChannel.onmessage = (event) => {
+    if (event.data?.provider !== 'github') return;
+    handleOAuthResult(event.data);
+  };
+
+  // 3. LocalStorage storage listener (secondary same-origin communication fallback)
+  function handleStorage(event) {
+    if (event.key !== 'github-oauth-result') return;
+    try {
+      const data = JSON.parse(event.newValue);
+      if (data && data.provider === 'github') {
+        // Clear the item so we don't re-process it next time
+        localStorage.removeItem('github-oauth-result');
+        handleOAuthResult(data);
+      }
+    } catch (e) {
+      console.error('[GitHub OAuth] Failed to parse storage event data:', e);
     }
   }
 
-  window.addEventListener('message', handleMessage);
-
-  closeTimer = setInterval(() => {
-    if (!popup.closed) return;
-    cleanup();
+  // 4. Focus/Visibility fallback check (for manual close detection)
+  const performFocusCheck = () => {
     if (settled) return;
+    if (Date.now() - openedAt < 2000) return; // Ignore premature focus events during popup initialization
 
-    // Popup closed without receiving a postMessage.
-    // The OAuth may have succeeded on the backend but the popup's
-    // window.opener was severed (e.g. GitHub's COOP headers) so the
-    // postMessage never arrived.  Check the backend directly.
-    settled = true;
+    // Wait a brief moment to let BroadcastChannel / Storage events fire first
+    setTimeout(async () => {
+      if (settled) return;
 
-    const checkUserState = async (retries = 3) => {
-      for (let i = 0; i < retries; i++) {
-        try {
-          const data = await refreshUser();
-          if (data?.githubConnected) {
-            onSuccess?.({
-              githubUsername: data.githubUsername,
-              githubProfileUrl: data.githubProfileUrl,
-            });
-            return;
-          }
-        } catch (err) {
-          console.error('[GitHub OAuth] Fallback user check failed:', err);
+      // Check user profile connection status directly from backend
+      try {
+        const data = await refreshUser();
+        if (data?.githubConnected) {
+          handleOAuthResult({
+            provider: 'github',
+            type: 'oauth-success',
+            success: true,
+            githubUsername: data.githubUsername,
+            githubProfileUrl: data.githubProfileUrl,
+          });
+          return;
         }
-        if (i < retries - 1) {
-          await new Promise((r) => setTimeout(r, 1000));
-        }
+      } catch (err) {
+        console.error('[GitHub OAuth] Focus fallback check failed:', err);
       }
-      onClosed?.();
-    };
 
-    checkUserState();
-  }, 500);
+      // If still not settled and not connected, the user closed the popup or navigated away
+      settled = true;
+      cleanup();
+      onClosed?.();
+    }, 800);
+  };
+
+  function handleFocus() {
+    performFocusCheck();
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      performFocusCheck();
+    }
+  }
+
+  // Setup periodic check in case popup was closed within 2 seconds of open and main window stayed focused
+  setTimeout(() => {
+    if (!settled && document.hasFocus()) {
+      performFocusCheck();
+    }
+  }, 2200);
+
+  window.addEventListener('message', handleMessage);
+  window.addEventListener('storage', handleStorage);
+  window.addEventListener('focus', handleFocus);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   return popup;
 }

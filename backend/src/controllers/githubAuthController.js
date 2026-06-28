@@ -53,7 +53,16 @@ const oauthPopupResponse = ({ success, message, githubUsername, githubProfileUrl
 };
 
 const sendOAuthPopupResponse = (res, payload, status = 200) => {
-  res.status(status).type('html').send(oauthPopupResponse(payload));
+  const frontendUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173';
+  const redirectUrl = new URL(`${frontendUrl}/github-callback.html`);
+  redirectUrl.searchParams.append('status', payload.success ? 'success' : 'error');
+  if (payload.success) {
+    redirectUrl.searchParams.append('username', payload.githubUsername || '');
+    redirectUrl.searchParams.append('profileUrl', payload.githubProfileUrl || '');
+  } else {
+    redirectUrl.searchParams.append('message', payload.message || 'GitHub connection failed.');
+  }
+  res.redirect(redirectUrl.toString());
 };
 
 /**

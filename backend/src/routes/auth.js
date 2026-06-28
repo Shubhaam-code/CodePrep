@@ -363,21 +363,12 @@ router.get('/github/callback', async (req, res) => {
     user.githubProfileUrl = 'https://github.com/mock_github_user';
     await user.save();
 
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Connecting...</title></head>
-      <body>
-        <p style="text-align:center; font-family:sans-serif; color:#94A3B8; margin-top:40px;">Successfully authorized! Connecting your profile...</p>
-        <script>
-          if (window.opener) {
-            window.opener.postMessage({ type: 'oauth-success', provider: 'github' }, '*');
-          }
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    const frontendUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173';
+    const redirectUrl = new URL(`${frontendUrl}/github-callback.html`);
+    redirectUrl.searchParams.append('status', 'success');
+    redirectUrl.searchParams.append('username', user.githubUsername || 'mock_github_user');
+    redirectUrl.searchParams.append('profileUrl', user.githubProfileUrl || 'https://github.com/mock_github_user');
+    return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error('GitHub callback error:', error);
     res.status(500).send('Internal Server Error');
