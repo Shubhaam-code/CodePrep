@@ -139,9 +139,11 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#0B0B0F] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-black font-extrabold text-lg shadow-lg shadow-[#FF7A00]/20 animate-pulse">
-            CP
-          </div>
+          <img
+            src="/imagecopy.png"
+            alt="CodePrep AI"
+            className="h-10 sm:h-12 w-auto object-contain animate-pulse"
+          />
           <span className="text-gray-400 text-sm font-semibold tracking-wider animate-pulse">
             Verifying session...
           </span>

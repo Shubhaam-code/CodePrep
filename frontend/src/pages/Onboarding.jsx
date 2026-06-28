@@ -266,10 +266,11 @@ export default function Onboarding() {
 
       {/* Floating Top Header */}
       <div className="w-full max-w-2xl flex items-center mb-8 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-black font-extrabold text-sm shadow-md shadow-[#FF7A00]/20">CP</div>
-          <span className="text-white font-extrabold text-lg tracking-wider">CodePrep</span>
-        </div>
+        <img
+          src="/imagecopy.png"
+          alt="CodePrep AI"
+          className="h-8 sm:h-10 md:h-12 w-auto object-contain"
+        />
       </div>
 
       {/* Onboarding Wizard Card */}

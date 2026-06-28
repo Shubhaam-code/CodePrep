@@ -125,13 +125,12 @@ router.post('/login', async (req, res) => {
  */
 router.post('/firebase', async (req, res) => {
   console.log('[Backend Auth] Received POST request on /api/auth/firebase');
+  const { idToken } = req.body;
   try {
     if (!isInitialized()) {
       console.error('[Backend Auth] Firebase Admin SDK is not initialized. Request rejected.');
       return res.status(503).json({ message: 'Firebase Authentication is not configured or failed to initialize on the server.' });
     }
-
-    const { idToken } = req.body;
 
     if (!idToken) {
       console.warn('[Backend Auth] Missing idToken in request body.');
@@ -212,7 +211,50 @@ router.post('/firebase', async (req, res) => {
     });
   } catch (error) {
     console.error('[Backend Auth] Firebase Auth route error during verification/processing:', error);
-    res.status(401).json({ message: 'Unauthorized: Invalid Firebase token' });
+    
+    let detailedError = 'Verification exception';
+    let decoded = null;
+    try {
+      if (idToken) {
+        decoded = jwt.decode(idToken, { complete: true });
+      }
+    } catch (e) {
+      console.error('[Backend Auth] Failed to decode token as JWT:', e.message);
+    }
+
+    if (!idToken) {
+      detailedError = 'Missing token';
+    } else if (!decoded || !decoded.payload) {
+      detailedError = 'Invalid token';
+    } else {
+      const payload = decoded.payload;
+      const now = Math.floor(Date.now() / 1000);
+      
+      const expectedAudience = process.env.FIREBASE_PROJECT_ID;
+      const expectedIssuer = `https://securetoken.google.com/${expectedAudience}`;
+      
+      if (!expectedAudience) {
+        detailedError = 'Invalid Client ID (FIREBASE_PROJECT_ID not configured)';
+      } else if (payload.aud !== expectedAudience) {
+        detailedError = 'Audience mismatch';
+        console.error(`[Backend Auth] Audience mismatch. Expected: ${expectedAudience}, Got: ${payload.aud}`);
+      } else if (payload.iss !== expectedIssuer) {
+        detailedError = 'Issuer mismatch';
+        console.error(`[Backend Auth] Issuer mismatch. Expected: ${expectedIssuer}, Got: ${payload.iss}`);
+      } else if (payload.exp && payload.exp < now) {
+        detailedError = 'Expired token';
+        console.error(`[Backend Auth] Expired token. Expired at: ${payload.exp}, Current time: ${now}`);
+      } else {
+        detailedError = `Verification exception: ${error.message}`;
+      }
+    }
+
+    console.error(`[Backend Auth] Google/Firebase Sign-In verification failure category: ${detailedError}`);
+    
+    res.status(401).json({ 
+      message: 'Unauthorized: Invalid Firebase token',
+      reason: detailedError
+    });
   }
 });
 
@@ -481,4 +523,90 @@ router.post('/onboarding/complete', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/auth/diag
+ * @desc    Production configuration audit & diagnostic endpoint
+ * @access  Public (sensitive data is redacted)
+ */
+router.get('/diag', async (req, res) => {
+  try {
+    const isFirebaseSdkInitialized = isInitialized();
+    
+    const projectId = process.env.FIREBASE_PROJECT_ID || null;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL || null;
+    const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY || null;
+    const jwtSecret = process.env.JWT_SECRET || null;
+    const frontendUrl = process.env.FRONTEND_URL || null;
+    const backendUrl = process.env.BACKEND_URL || null;
+
+    let privateKeyStatus = {
+      present: !!rawPrivateKey,
+      length: rawPrivateKey ? rawPrivateKey.length : 0,
+      isValidPem: false,
+      hasEscapedNewlines: false,
+      hasRealNewlines: false,
+      startsWithHeader: false,
+      endsWithFooter: false
+    };
+
+    if (rawPrivateKey) {
+      privateKeyStatus.startsWithHeader = rawPrivateKey.includes('-----BEGIN PRIVATE KEY-----');
+      privateKeyStatus.endsWithFooter = rawPrivateKey.includes('-----END PRIVATE KEY-----');
+      privateKeyStatus.hasEscapedNewlines = rawPrivateKey.includes('\\n');
+      privateKeyStatus.hasRealNewlines = rawPrivateKey.includes('\n');
+      
+      // Process it similarly to config/firebase.js to check if it becomes valid
+      let tempKey = rawPrivateKey.trim();
+      if (tempKey.startsWith('"') && tempKey.endsWith('"')) {
+        tempKey = tempKey.slice(1, -1);
+      } else if (tempKey.startsWith("'") && tempKey.endsWith("'")) {
+        tempKey = tempKey.slice(1, -1);
+      }
+      tempKey = tempKey.replace(/\\n/g, '\n');
+      privateKeyStatus.isValidPem = tempKey.includes('-----BEGIN PRIVATE KEY-----') && tempKey.includes('-----END PRIVATE KEY-----');
+    }
+
+    const report = {
+      timestamp: new Date().toISOString(),
+      firebaseAdminInitialized: isFirebaseSdkInitialized,
+      envVariables: {
+        FIREBASE_PROJECT_ID: {
+          configured: !!projectId,
+          value: projectId
+        },
+        FIREBASE_CLIENT_EMAIL: {
+          configured: !!clientEmail,
+          value: clientEmail
+        },
+        FIREBASE_PRIVATE_KEY: privateKeyStatus,
+        JWT_SECRET: {
+          configured: !!jwtSecret,
+          length: jwtSecret ? jwtSecret.length : 0
+        },
+        FRONTEND_URL: {
+          configured: !!frontendUrl,
+          value: frontendUrl
+        },
+        BACKEND_URL: {
+          configured: !!backendUrl,
+          value: backendUrl
+        }
+      },
+      auditChecks: {
+        firebaseConfigMatches: projectId === 'codeprep-e1b59',
+        corsAllowedOrigins: [
+          'http://localhost:5173',
+          'https://code-prep-three.vercel.app'
+        ]
+      }
+    };
+
+    res.status(200).json(report);
+  } catch (error) {
+    console.error('[Diag Endpoint] Error generating diagnostics:', error);
+    res.status(500).json({ error: 'Failed to run configuration diagnostics', details: error.message });
+  }
+});
+
 module.exports = router;
+
