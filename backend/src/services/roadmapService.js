@@ -56,7 +56,6 @@ const aggregatePatternStats = async () => {
   ]);
 };
 
-/**
 const isGeneralPrepContext = (ctx) => {
   if (!ctx || ctx === 'general') return true;
   if (ctx.startsWith('pattern_') || ctx.startsWith('sheet_')) return true;
