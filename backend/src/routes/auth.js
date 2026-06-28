@@ -363,7 +363,7 @@ router.get('/github/callback', async (req, res) => {
     user.githubProfileUrl = 'https://github.com/mock_github_user';
     await user.save();
 
-    const frontendUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://code-prep-three.vercel.app';
     const redirectUrl = new URL(`${frontendUrl}/github-callback.html`);
     redirectUrl.searchParams.append('status', 'success');
     redirectUrl.searchParams.append('username', user.githubUsername || 'mock_github_user');
@@ -586,8 +586,9 @@ router.get('/diag', async (req, res) => {
       auditChecks: {
         firebaseConfigMatches: projectId === 'codeprep-e1b59',
         corsAllowedOrigins: [
-          'http://localhost:5173',
-          'https://code-prep-three.vercel.app'
+          process.env.FRONTEND_URL || 'https://code-prep-three.vercel.app',
+          'https://code-prep-three.vercel.app',
+          'http://localhost:5173'
         ]
       }
     };

@@ -53,7 +53,7 @@ const oauthPopupResponse = ({ success, message, githubUsername, githubProfileUrl
 };
 
 const sendOAuthPopupResponse = (res, payload, status = 200) => {
-  const frontendUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://code-prep-three.vercel.app';
   const redirectUrl = new URL(`${frontendUrl}/github-callback.html`);
   redirectUrl.searchParams.append('status', payload.success ? 'success' : 'error');
   if (payload.success) {

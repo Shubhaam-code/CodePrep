@@ -30,9 +30,11 @@ connectDB();
 
 // Middleware
 const allowedOrigins = [
+  process.env.FRONTEND_URL,
   'http://localhost:5173',
-  'https://code-prep-three.vercel.app'
-];
+  'https://code-prep-three.vercel.app',
+].filter(Boolean);
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
