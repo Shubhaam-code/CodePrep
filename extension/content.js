@@ -185,7 +185,6 @@ function extractMetadataFromUrl() {
   try {
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Always read current URL params — absent params resolve to null (never preserve stale values)
     const company   = urlParams.get('company')   || null;
     const challenge = urlParams.get('challenge') || null;
     const dayStr    = urlParams.get('day');
@@ -193,22 +192,22 @@ function extractMetadataFromUrl() {
     const pattern   = urlParams.get('pattern')   || null;
     const sheet     = urlParams.get('sheet')     || null;
 
-    console.log(`[Auto Sync] URL metadata parsed — company: ${company}, challenge: ${challenge}, day: ${day}, pattern: ${pattern}, sheet: ${sheet}`);
+    const hasContextParams = company || challenge || (day !== null) || pattern || sheet;
 
-    // Always overwrite stored metadata with the current page's values,
-    // so stale context from a previous page is never carried forward.
+    console.log(`[Auto Sync] URL metadata parsed — company: ${company}, challenge: ${challenge}, day: ${day}, pattern: ${pattern}, sheet: ${sheet}, hasParams: ${hasContextParams}`);
+
     chrome.storage.local.get([currentProblemKey], (result) => {
       const existing = result[currentProblemKey] || {};
-      const updated = {
-        ...existing,
-        company,
-        challenge,
-        day,
-        pattern,
-        sheet,
-      };
+
+      const updated = hasContextParams
+        ? { ...existing, company, challenge, day, pattern, sheet }
+        : { ...existing };
+
       chrome.storage.local.set({ [currentProblemKey]: updated }, () => {
-        console.log(`[Auto Sync] Metadata overwritten for ${currentProblemKey}:`, { company, challenge, day, pattern, sheet });
+        console.log(
+          `[Auto Sync] Metadata ${hasContextParams ? 'overwritten' : 'preserved'} for ${currentProblemKey}:`,
+          { company: updated.company, challenge: updated.challenge, day: updated.day, pattern: updated.pattern, sheet: updated.sheet }
+        );
       });
     });
   } catch (e) {

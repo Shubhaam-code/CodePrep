@@ -38,7 +38,7 @@ if (!activeEnv) {
       // Chrome Web Store installs always include update_url.
       // Local unpacked extensions never have update_url.
       // Default to "production" for unpacked — avoids localhost in prod builds.
-      activeEnv = manifest.update_url ? "production" : "production";
+      activeEnv = manifest.update_url ? "production" : "development";
       // ↑ To test against local backend with an unpacked extension,
       //   change RAW_CONFIG.ENV to "development" at the top of this file.
     } else {

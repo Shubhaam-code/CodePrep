@@ -500,7 +500,7 @@ export default function GVChallenge() {
                   <div className="flex items-center gap-3 mt-8">
                     {/* Primary: Open on LeetCode — explicit window.open to bypass any routing */}
                     <button
-                      onClick={() => openInNewTab(leetcodeUrl)}
+                      onClick={() => openInNewTab(leetcodeUrl ? `${leetcodeUrl.replace(/\/$/, '')}/?challenge=gv&day=${currentDay}` : null)}
                       className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-bold text-sm text-white"
                       style={{
                         backgroundColor: '#FF6B1A',
@@ -765,7 +765,7 @@ export default function GVChallenge() {
                                 const url = (q.leetcodeUrl && q.leetcodeUrl.startsWith('http'))
                                   ? q.leetcodeUrl
                                   : `https://leetcode.com/problems/${q.title?.toLowerCase().replace(/[^a-z0-9\s-]/g,'').trim().replace(/\s+/g,'-')}/`;
-                                window.open(url, '_blank', 'noopener,noreferrer');
+                                window.open(`${url.replace(/\/$/, '')}/?challenge=gv&day=${q.dayNumber}`, '_blank', 'noopener,noreferrer');
                               }}
                               className="text-[11px] font-semibold transition-colors cursor-pointer"
                               style={{ background: 'none', border: 'none', padding: 0, color: '#4b5563' }}
@@ -780,7 +780,7 @@ export default function GVChallenge() {
                                 const url = (q.leetcodeUrl && q.leetcodeUrl.startsWith('http'))
                                   ? q.leetcodeUrl
                                   : `https://leetcode.com/problems/${q.title?.toLowerCase().replace(/[^a-z0-9\s-]/g,'').trim().replace(/\s+/g,'-')}/`;
-                                window.open(url, '_blank', 'noopener,noreferrer');
+                                window.open(`${url.replace(/\/$/, '')}/?challenge=gv&day=${q.dayNumber}`, '_blank', 'noopener,noreferrer');
                               }}
                               className="text-[11px] font-bold transition-colors cursor-pointer"
                               style={{ background: 'none', border: 'none', padding: 0, color: '#FF6B1A' }}

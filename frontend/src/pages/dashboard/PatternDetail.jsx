@@ -310,7 +310,7 @@ export default function PatternDetail() {
                             decoupled from the GitHub-sync flow. */}
                         {q.leetcodeUrl ? (
                           <a
-                            href={q.leetcodeUrl}
+                            href={`${(q.leetcodeUrl || '').replace(/\/$/, '')}/?pattern=${pattern}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="cursor-pointer text-[11px] font-bold px-3 py-2 rounded-lg inline-flex items-center gap-1.5 text-white shadow-md shadow-[#FF7A00]/15 transition hover:opacity-90"

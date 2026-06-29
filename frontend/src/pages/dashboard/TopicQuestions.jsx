@@ -178,7 +178,7 @@ export default function TopicQuestions() {
                           {/* Title */}
                           <td className="px-6 py-4">
                             <a
-                              href={q.leetcodeUrl}
+                              href={`${(q.leetcodeUrl || '').replace(/\/$/, '')}/?pattern=${topicName ? decodeURIComponent(topicName) : ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`font-semibold hover:text-[#FF7A00] transition-colors cursor-pointer ${

@@ -157,7 +157,7 @@ function QuestionRowSkeleton({ index }) {
 }
 
 // ─── Question Row Card ────────────────────────────────────────────────────────
-const QuestionRowCard = memo(function QuestionRowCard({ question, order, solved, themeColor }) {
+const QuestionRowCard = memo(function QuestionRowCard({ question, order, solved, themeColor, patternId }) {
   const { title, difficulty, leetcodeUrl } = question;
   const hasUrl = typeof leetcodeUrl === 'string' && leetcodeUrl.trim().length > 0;
   const diffStyle = DIFFICULTY_STYLE[difficulty] || DIFFICULTY_STYLE['Medium'];
@@ -262,7 +262,7 @@ const QuestionRowCard = memo(function QuestionRowCard({ question, order, solved,
       {/* LeetCode link action */}
       {hasUrl ? (
         <a
-          href={leetcodeUrl}
+          href={`${(leetcodeUrl || '').replace(/\/$/, '')}/?pattern=${patternId || ''}`}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 inline-flex items-center justify-center gap-2 text-[12px] font-bold px-4 py-2.5 rounded-xl text-white shadow-md transition-all duration-200"
@@ -631,6 +631,7 @@ export default function RoadmapPatternDetail() {
                     order={i + 1}
                     solved={solvedSet.has(String(q._id))}
                     themeColor={themeColor}
+                    patternId={patternId}
                   />
                 ))}
               </div>
