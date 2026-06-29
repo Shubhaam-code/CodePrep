@@ -8,18 +8,21 @@
   --text-primary: #f3f4f6;
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
-  
-  --accent-color: #6366f1; /* Indigo */
+
+  --accent-color: #6366f1;
+  /* Indigo */
   --accent-glow: rgba(99, 102, 241, 0.15);
-  
-  --status-connected: #10b981; /* Emerald Green */
+
+  --status-connected: #10b981;
+  /* Emerald Green */
   --status-connected-glow: rgba(16, 185, 129, 0.4);
-  --status-disconnected: #ef4444; /* Red */
-  
+  --status-disconnected: #ef4444;
+  /* Red */
+
   --difficulty-easy: #00b8a3;
   --difficulty-medium: #ffc01e;
   --difficulty-hard: #ff375f;
-  
+
   --font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -43,7 +46,8 @@ body {
   padding: 16px;
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 0px; /* Chrome extension popup wrapper */
+  border-radius: 0px;
+  /* Chrome extension popup wrapper */
 }
 
 /* Header */
@@ -222,7 +226,8 @@ body {
 }
 
 .question-link:hover {
-  color: #818cf8; /* Lighter indigo */
+  color: #818cf8;
+  /* Lighter indigo */
 }
 
 .url-text {

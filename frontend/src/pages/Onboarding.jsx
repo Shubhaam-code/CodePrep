@@ -32,7 +32,7 @@ export default function Onboarding() {
   const savedStep = sessionStorage.getItem('onboarding_step');
   const [step, setStepState] = useState(savedStep ? Number(savedStep) : 1);
   const stepRef = useRef(savedStep ? Number(savedStep) : 1);
-  
+
   const setStep = (val) => {
     if (typeof val === 'function') {
       setStepState((prev) => {
@@ -54,7 +54,6 @@ export default function Onboarding() {
     detectionStateRef.current = val;
     setDetectionStateState(val);
   };
-
   const extensionConnected = detectionState === 'success';
 
   const [isCompleting, setIsCompleting] = useState(false);
@@ -65,88 +64,106 @@ export default function Onboarding() {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
-  // Refs for timers
-  const checkingInstallTimerRef = useRef(null);
-  const pingBurstTimersRef = useRef([]);
+  // Refs for tracking the background polling interval and start time
+  const pollingIntervalRef = useRef(null);
+  const pollingStartTimeRef = useRef(0);
+  const checkPendingTimerRef = useRef(null); // Ref to track the 1-second timeout after a page refresh check
 
-  const clearDetectionTimers = () => {
-    if (checkingInstallTimerRef.current) {
-      clearTimeout(checkingInstallTimerRef.current);
-      checkingInstallTimerRef.current = null;
+  /**
+   * Restarts the silent background polling loop.
+   * Clears any active interval, resets the timer, and sets a 2-second check interval.
+   */
+  const restartPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
-    if (pingBurstTimersRef.current && pingBurstTimersRef.current.length > 0) {
-      pingBurstTimersRef.current.forEach((t) => clearTimeout(t));
-      pingBurstTimersRef.current = [];
-    }
+
+    pollingStartTimeRef.current = Date.now();
+    const maxDuration = 5 * 60 * 1000; // 5 minutes cap
+
+    const checkPresence = () => {
+      const isInstalled = document.documentElement.getAttribute("data-extension-installed") === "true";
+      if (isInstalled) {
+        setDetectionState('success');
+        localStorage.setItem('extension_installed_once', 'true');
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        return true;
+      }
+      return false;
+    };
+
+    pollingIntervalRef.current = setInterval(() => {
+      if (Date.now() - pollingStartTimeRef.current > maxDuration) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        return;
+      }
+      checkPresence();
+    }, 2000);
   };
 
-  // ── Extension Handshake (listener) ──────────────────────────────────
-  //    Registered once on mount, removed on unmount.
-  useEffect(() => {
-    const handlePongMessage = (event) => {
-      if (event.source !== window) return;
-      if (event.data?.type === 'CODEPREP_PONG') {
-        if (detectionStateRef.current === 'success') return; // Prevent duplicate transitions
-        console.log('[Onboarding] Companion Extension PONG received.');
-        setDetectionState('success');
-        setErrorMsg('');
-        setDownloadError('');
-        clearDetectionTimers();
-      }
-    };
+  // ── Instant Extension Detection ──────────────────────────────────────
+  const handleInstalledClick = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
 
-    window.addEventListener('message', handlePongMessage);
+    // 1. Set the pending check flag in localStorage before refreshing
+    localStorage.setItem('extensionCheckPending', 'true');
+
+    // 2. Perform page reload to ensure browser injects the extension content script
+    window.location.reload();
+  };
+
+  // Check extension presence automatically when user enters step 3
+  useEffect(() => {
+    if (step === 3 && detectionStateRef.current !== 'success') {
+      const isPending = localStorage.getItem('extensionCheckPending') === 'true';
+
+      if (isPending) {
+        // Clear the flag immediately to prevent repeat detection on manual refreshes
+        localStorage.removeItem('extensionCheckPending');
+        setDetectionState('checking');
+
+        // Allow 1.5 seconds for the extension content script to inject and load in the DOM
+        checkPendingTimerRef.current = setTimeout(() => {
+          const isInstalled = document.documentElement.getAttribute("data-extension-installed") === "true";
+          if (isInstalled) {
+            setDetectionState('success');
+            localStorage.setItem('extension_installed_once', 'true');
+            setErrorMsg('');
+            setDownloadError('');
+          } else {
+            setDetectionState('failure');
+            restartPolling();
+          }
+        }, 1500);
+      } else {
+        const isInstalled = document.documentElement.getAttribute("data-extension-installed") === "true";
+        if (isInstalled) {
+          setDetectionState('success');
+          localStorage.setItem('extension_installed_once', 'true');
+        } else {
+          setDetectionState('idle');
+          restartPolling();
+        }
+      }
+    }
+
     return () => {
-      window.removeEventListener('message', handlePongMessage);
-      clearDetectionTimers();
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      if (checkPendingTimerRef.current) {
+        clearTimeout(checkPendingTimerRef.current);
+        checkPendingTimerRef.current = null;
+      }
     };
-  }, []);
-
-  // ── Initial Mount / Post-Reload Check ───────────────────────────────
-  //    Checks sessionStorage for pending reload flags, or does a quick background ping.
-  useEffect(() => {
-    const isReloadCheck = sessionStorage.getItem('pending_extension_reload') === 'true';
-    
-    if (isReloadCheck) {
-      sessionStorage.removeItem('pending_extension_reload');
-      
-      // Ensure we are on Step 3 for check
-      setStep(3);
-      setDetectionState('checking');
-      setErrorMsg('');
-
-      const sendPing = () => {
-        if (detectionStateRef.current === 'success') return;
-        window.postMessage({ type: 'CODEPREP_PING' }, '*');
-      };
-
-      // Burst of pings
-      sendPing();
-      for (let i = 1; i < 5; i++) {
-        const t = setTimeout(sendPing, i * 200);
-        pingBurstTimersRef.current.push(t);
-      }
-
-      // Timeout check: strict 5-second timeout
-      checkingInstallTimerRef.current = setTimeout(() => {
-        setDetectionState('failure');
-        setErrorMsg("Extension not detected. Please make sure the extension is installed and enabled.");
-        clearDetectionTimers();
-      }, 5000);
-    } else {
-      // Quiet background check in case already installed
-      if (step === 3 && detectionStateRef.current !== 'success' && detectionStateRef.current !== 'checking') {
-        window.postMessage({ type: 'CODEPREP_PING' }, '*');
-      }
-    }
-  }, []);
-
-  // ── Step Transition check ──────────────────────────────────────────
-  //    Triggers quiet detection when user reaches Step 3.
-  useEffect(() => {
-    if (step === 3 && detectionStateRef.current !== 'success' && detectionStateRef.current !== 'checking') {
-      window.postMessage({ type: 'CODEPREP_PING' }, '*');
-    }
   }, [step]);
 
   const handleConnectGitHub = () => {
@@ -177,17 +194,6 @@ export default function Onboarding() {
     navigate('/dashboard');
   };
 
-  const handleRetryDetection = () => {
-    if (detectionStateRef.current === 'checking') return; // Prevent duplicate checks
-    sessionStorage.setItem('pending_extension_reload', 'true');
-    window.location.reload();
-  };
-
-  const handleInstalledClick = () => {
-    if (detectionStateRef.current === 'checking') return; // Prevent duplicate checks
-    sessionStorage.setItem('pending_extension_reload', 'true');
-    window.location.reload();
-  };
 
   const faqItems = [
     { q: 'Is this safe?', a: 'The extension only works on LeetCode and your website. It never reads unrelated websites.' },
@@ -243,12 +249,7 @@ export default function Onboarding() {
   const githubConnected = user?.githubConnected || false;
   const githubProfileUrl = user?.githubProfileUrl || (user?.githubUsername ? `https://github.com/${user.githubUsername}` : '');
 
-  // ── Unmount cleanup: clear any pending timers ──────────────────────
-  useEffect(() => {
-    return () => {
-      clearDetectionTimers();
-    };
-  }, []);
+
 
   // Stepper state configurations
   const stepsConfig = [
@@ -275,34 +276,31 @@ export default function Onboarding() {
 
       {/* Onboarding Wizard Card */}
       <div className="w-full max-w-2xl bg-[#0D0D12]/80 backdrop-blur-md border border-white/10 rounded-3xl p-8 space-y-8 shadow-2xl relative z-10">
-        
+
         {/* Stepper Progress Indicator */}
         <div className="flex items-center justify-between border-b border-white/5 pb-6">
           {stepsConfig.map((s, idx) => (
             <React.Fragment key={s.number}>
               <div className="flex items-center gap-2">
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition ${
-                    step >= s.number
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition ${step >= s.number
                       ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black border-transparent shadow shadow-[#FF7A00]/10'
                       : 'border-white/20 text-gray-500 bg-[#0B0B0F]'
-                  }`}
+                    }`}
                 >
                   {step > s.number ? <FaCheck size={8} /> : s.number}
                 </div>
                 <span
-                  className={`text-xs font-bold transition ${
-                    step >= s.number ? 'text-white' : 'text-gray-500'
-                  }`}
+                  className={`text-xs font-bold transition ${step >= s.number ? 'text-white' : 'text-gray-500'
+                    }`}
                 >
                   {s.title}
                 </span>
               </div>
               {idx < stepsConfig.length - 1 && (
                 <div
-                  className={`flex-1 h-[1px] mx-4 transition-all duration-300 ${
-                    step > s.number ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800]' : 'bg-white/5'
-                  }`}
+                  className={`flex-1 h-[1px] mx-4 transition-all duration-300 ${step > s.number ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800]' : 'bg-white/5'
+                    }`}
                 />
               )}
             </React.Fragment>
@@ -329,7 +327,7 @@ export default function Onboarding() {
         {/* Wizard step views wrapper */}
         <div className="min-h-[220px] flex flex-col justify-between">
           <AnimatePresence mode="wait">
-            
+
             {/* STEP 1: Welcome Screen */}
             {step === 1 && (
               <motion.div
@@ -437,11 +435,10 @@ export default function Onboarding() {
                   <button
                     onClick={() => setStep(3)}
                     disabled={!githubConnected}
-                    className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${
-                      githubConnected
+                    className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${githubConnected
                         ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 shadow-lg shadow-[#FF7A00]/10'
                         : 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/5'
-                    }`}
+                      }`}
                   >
                     Continue <FaArrowRight size={10} />
                   </button>
@@ -520,7 +517,7 @@ export default function Onboarding() {
                           {i < 6 && (
                             <div className="flex justify-center py-1">
                               <svg width="10" height="16" viewBox="0 0 10 16" fill="none" className="text-gray-600">
-                                <path d="M5 0L5 14M5 14L1 10M5 14L9 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M5 0L5 14M5 14L1 10M5 14L9 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </div>
                           )}
@@ -534,83 +531,147 @@ export default function Onboarding() {
                      ═══════════════════════════════════════════════════════ */
                   <div className="space-y-6">
                     {/* ── Extension Connection Card ── */}
-                    {extensionConnected ? (
-                      /* Connected */
-                      <motion.div
-                        initial={{ scale: 0.92, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 18 }}
-                        className="bg-green-500/5 border border-green-500/20 p-6 rounded-2xl text-center space-y-3"
-                      >
+                    <AnimatePresence mode="wait">
+                      {detectionState === 'success' ? (
+                        /* Connected */
                         <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.1 }}
+                          key="success-card"
+                          initial={{ scale: 0.92, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.92, opacity: 0 }}
+                          transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+                          className="bg-green-500/5 border border-green-500/20 p-6 rounded-2xl text-center space-y-3"
                         >
-                          <FaCheckCircle size={36} className="text-green-400 mx-auto" />
-                        </motion.div>
-                        <h3 className="text-white font-bold text-sm">Extension Connected Successfully</h3>
-                        <p className="text-gray-400 text-xs">
-                          You're ready to automatically sync your accepted LeetCode solutions.
-                        </p>
-                      </motion.div>
-                    ) : (
-                      /* Not installed */
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="bg-[#0B0B0F] border border-white/5 p-6 rounded-2xl space-y-5"
-                      >
-                        <div className="text-center space-y-2">
-                          <h3 className="text-white font-bold text-sm">Companion Extension Required</h3>
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.1 }}
+                          >
+                            <FaCheckCircle size={36} className="text-green-400 mx-auto" />
+                          </motion.div>
+                          <h3 className="text-white font-bold text-sm">✅ Extension Detected</h3>
                           <p className="text-gray-400 text-xs">
-                            Install the extension once. After installation everything works automatically.
+                            Ready for Automatic Sync
                           </p>
-                        </div>
+                        </motion.div>
+                      ) : (
+                        /* Not Connected */
+                        <motion.div
+                          key="not-connected-card"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="bg-[#0B0B0F] border border-white/5 p-6 rounded-2xl space-y-5"
+                        >
+                          <div className="text-center min-h-[70px] flex flex-col justify-center">
+                            <AnimatePresence mode="wait">
+                              {detectionState === 'checking' && (
+                                <motion.div
+                                  key="checking"
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.95 }}
+                                  transition={{ duration: 0.25 }}
+                                  className="space-y-3"
+                                >
+                                  <FaSpinner className="animate-spin text-[#FF7A00] mx-auto" size={32} />
+                                  <div className="space-y-0.5">
+                                    <h3 className="text-white font-bold text-sm">Checking for extension...</h3>
+                                    <p className="text-gray-400 text-xs">
+                                      Establishing a secure connection with CodePrep companion.
+                                    </p>
+                                  </div>
+                                </motion.div>
+                              )}
+                              {detectionState === 'failure' && (
+                                <motion.div
+                                  key="failure"
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.95 }}
+                                  transition={{ duration: 0.25 }}
+                                  className="space-y-3"
+                                >
+                                  <FaExclamationCircle size={32} className="text-red-400 mx-auto" />
+                                  <div className="space-y-0.5">
+                                    <h3 className="text-red-400 font-bold text-sm">❌ Extension not installed</h3>
+                                    <p className="text-gray-400 text-xs px-4">
+                                      Please install it and click the button again.
+                                    </p>
+                                  </div>
+                                </motion.div>
+                              )}
+                              {detectionState === 'idle' && (
+                                <motion.div
+                                  key="idle"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="space-y-2"
+                                >
+                                  <h3 className="text-white font-bold text-sm">Companion Extension Required</h3>
+                                  <p className="text-gray-400 text-xs">
+                                    Install the extension once. After installation everything works automatically.
+                                  </p>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
 
-                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                          <a
-                            href="/downloads/leetcode-companion-extension.zip"
-                            download
-                            onClick={handleDownloadExtension}
-                            className="cursor-pointer px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-xs text-black rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#FF7A00]/10 transition"
-                          >
-                            <FaDownload size={12} /> Download Extension
-                          </a>
-                          <a
-                            href="/downloads/LeetCode_Extension_Setup_Guide.pdf"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cursor-pointer px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 font-extrabold text-xs text-gray-300 hover:text-white rounded-xl flex items-center justify-center gap-2 transition"
-                          >
-                            📘 Installation Guide (PDF)
-                          </a>
-                        </div>
+                          {detectionState !== 'checking' && (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ delay: 0.15 }}
+                              className="flex flex-col sm:flex-row gap-3 justify-center"
+                            >
+                              <a
+                                href="/downloads/leetcode-companion-extension.zip"
+                                download
+                                onClick={handleDownloadExtension}
+                                className="cursor-pointer px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-xs text-black rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#FF7A00]/10 transition"
+                              >
+                                <FaDownload size={12} /> Download Extension
+                              </a>
+                              <a
+                                href="/downloads/LeetCode_Extension_Setup_Guide.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="cursor-pointer px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 font-extrabold text-xs text-gray-300 hover:text-white rounded-xl flex items-center justify-center gap-2 transition"
+                              >
+                                📘 Installation Guide (PDF)
+                              </a>
+                            </motion.div>
+                          )}
 
-                        <p className="text-gray-400 text-[11px] text-center max-w-md mx-auto leading-relaxed">
-                          Need help installing the extension?<br />
-                          Download the step-by-step installation guide (PDF) and follow the screenshots.
-                        </p>
+                          <p className="text-gray-400 text-[11px] text-center max-w-md mx-auto leading-relaxed">
+                            Need help installing the extension?<br />
+                            Download the step-by-step installation guide (PDF) and follow the screenshots.
+                          </p>
 
-                        <div className="flex justify-center">
-                          <button
-                            onClick={handleInstalledClick}
-                            disabled={detectionState === 'checking' || detectionState === 'success'}
-                            className={`cursor-pointer px-6 py-3 font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 transition w-full sm:w-auto ${
-                              detectionState === 'success'
-                                ? 'bg-green-500/10 text-green-400 border border-green-500/20 shadow-none cursor-default'
-                                : 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 disabled:opacity-60 disabled:cursor-wait text-black shadow-lg shadow-[#FF7A00]/10'
-                            }`}
-                          >
-                            {detectionState === 'checking' && (
-                              <><FaSpinner className="animate-spin" size={14} /> Checking...</>
-                            )}
-                            {(detectionState === 'idle' || detectionState === 'failure') && <>Check Extension</>}
-                            {detectionState === 'success' && <><FaCheckCircle size={14} /> Extension Connected ✓</>}
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
+                          <div className="flex justify-center">
+                            <button
+                              onClick={handleInstalledClick}
+                              disabled={detectionState === 'checking'}
+                              className={`cursor-pointer px-6 py-3 font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 transition w-full sm:w-auto ${detectionState === 'checking'
+                                  ? 'bg-white/10 text-gray-400 border border-white/5 cursor-wait shadow-none'
+                                  : 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 text-black shadow-lg shadow-[#FF7A00]/10'
+                                }`}
+                            >
+                              {detectionState === 'checking' ? (
+                                <>
+                                  <FaSpinner className="animate-spin" size={14} />
+                                  Checking...
+                                </>
+                              ) : (
+                                <>I've Installed the Extension</>
+                              )}
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {/* ── FAQ Section ── */}
                     <div className="bg-[#0B0B0F] border border-white/5 p-5 rounded-2xl space-y-3">
@@ -656,11 +717,10 @@ export default function Onboarding() {
                       <button
                         onClick={() => setStep(4)}
                         disabled={!extensionConnected}
-                        className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${
-                          extensionConnected
+                        className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${extensionConnected
                             ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 shadow-lg shadow-[#FF7A00]/10'
                             : 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/5'
-                        }`}
+                          }`}
                       >
                         Continue <FaArrowRight size={10} />
                       </button>
@@ -734,7 +794,7 @@ export default function Onboarding() {
                   >
                     Back
                   </button>
-                  
+
                   <div className="flex gap-3">
                     <button
                       onClick={handleSkip}
@@ -745,11 +805,10 @@ export default function Onboarding() {
                     <button
                       onClick={handleCompleteOnboarding}
                       disabled={isCompleting || !githubConnected || !extensionConnected}
-                      className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${
-                        !isCompleting && githubConnected && extensionConnected
+                      className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${!isCompleting && githubConnected && extensionConnected
                           ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 shadow-lg shadow-[#FF7A00]/10'
                           : 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/5'
-                      }`}
+                        }`}
                     >
                       {isCompleting ? (
                         <>

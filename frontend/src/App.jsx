@@ -133,21 +133,12 @@ export default function App() {
       channel.removeEventListener('message', handleSyncCompleted);
       channel.close();
     };
-  }, [dispatch, isAuthenticated, queryClient]);
+  }, [isAuthenticated, dispatch, queryClient]);
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-[#0B0B0F] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <img
-            src="/imagecopy.png"
-            alt="CodePrep AI"
-            className="h-10 sm:h-12 w-auto object-contain animate-pulse"
-          />
-          <span className="text-gray-400 text-sm font-semibold tracking-wider animate-pulse">
-            Verifying session...
-          </span>
-        </div>
+      <div className="min-h-screen bg-[#0B0B0F] flex items-center justify-center text-white font-sans">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#FF7A00]"></div>
       </div>
     );
   }

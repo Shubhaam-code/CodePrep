@@ -28,18 +28,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     } else {
       chrome.storage.local.remove(["token"], () => {
-        console.log("JWT token removed from chrome.storage.local.");
+        console.log("JWT token cleared from chrome.storage.local.");
         sendResponse({ success: true });
       });
     }
   } else if (request.action === "triggerAutoSync") {
     const { problemKey, payload } = request;
-    console.log("BACKGROUND PAYLOAD COMPANY:", payload.company);
-    console.log("FULL PAYLOAD:", payload);
     console.log(`LeetCode Tracker [Auto Sync]: Auto sync started for URL: ${payload.url}`);
 
-    chrome.storage.local.get(["token", problemKey], (result) => {
-      const token = result.token;
+    chrome.storage.local.get([problemKey], async (result) => {
       const problemData = result[problemKey] || {};
       const company = problemData.company || null;
       const challenge = problemData.challenge || null;
@@ -66,29 +63,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sheet: finalSheet
       });
 
+      // Update state to checking auth
+      updateSyncState(problemKey, currentContext, "checking_auth", "Checking Authentication...");
+
+      // Attempt validation / browser recovery
+      const token = await getOrRecoverToken();
       if (!token) {
-        console.error(`LeetCode Tracker [Auto Sync]: Auto sync failed for URL: ${payload.url}. Error: Please login to CodePrep.`);
-        chrome.storage.local.get([problemKey], (problemResult) => {
-          const existing = problemResult[problemKey] || {};
-          if (!existing.contexts) {
-            existing.contexts = {};
-          }
-          existing.contexts[currentContext] = {
-            syncState: "pending_auth",
-            syncError: "Please login to CodePrep.",
-            timestamp: new Date().toISOString()
-          };
-          const updated = {
-            ...existing,
-            status: "Accepted",
-            timestamp: new Date().toISOString()
-          };
-          chrome.storage.local.set({ [problemKey]: updated }, () => {
-            sendResponse({ success: false, error: "Please login to CodePrep." });
-          });
-        });
+        updateSyncState(problemKey, currentContext, "pending_auth", "Login Required");
+        showNotification("auth_expired");
+        sendResponse({ success: false, error: "Login Required" });
         return;
       }
+
+      updateSyncState(problemKey, currentContext, "preparing_sync", "Preparing Sync...");
 
       const syncPayload = {
         ...payload,
@@ -99,10 +86,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sheet: finalSheet,
         syncContext: currentContext
       };
-      console.log("REQUEST BODY SENT TO BACKEND:");
-      console.log(JSON.stringify(syncPayload, null, 2));
-      console.log("PAYLOAD COMPANY:", payload?.company);
-      console.log("SYNC PAYLOAD COMPANY:", syncPayload?.company);
+
+      updateSyncState(problemKey, currentContext, "syncing", "Syncing...");
+
       fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
         method: "POST",
         headers: {
@@ -111,140 +97,111 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         },
         body: JSON.stringify(syncPayload)
       })
-      .then(async (response) => {
-        console.log(`[Auto Sync] HTTP status code: ${response.status}`);
+        .then(async (response) => {
+          console.log(`[Auto Sync] HTTP status code: ${response.status}`);
 
-        if (response.status === 401) {
-          chrome.storage.local.remove(["token"], () => {
-            console.log("[Auto Sync] Unauthorized (401) - Token removed from storage.");
-          });
-          const error = new Error("CodePrep authentication expired. Please login again.");
-          error.status = 401;
-          throw error;
-        }
-        if (response.status === 403) {
-          const error = new Error("You don't have permission to perform this sync.");
-          error.status = 403;
-          throw error;
-        }
-        if (response.status === 404) {
-          const error = new Error("Sync service unavailable.");
-          error.status = 404;
-          throw error;
-        }
-        if (response.status >= 500) {
-          const error = new Error("Server error. Please try again later.");
-          error.status = response.status;
-          throw error;
-        }
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          const error = new Error(errData.error || "Unable to sync right now. Please try again.");
-          error.status = response.status;
-          throw error;
-        }
-        return response.json();
-      })
-      .then((res) => {
-        console.log(`LeetCode Tracker [Auto Sync]: Auto sync success for URL: ${payload.url} under context ${currentContext}`);
-        showNotification("success");
-        
-        chrome.storage.local.get([problemKey], (problemResult) => {
-          const existing = problemResult[problemKey] || {};
-          if (!existing.contexts) {
-            existing.contexts = {};
+          if (response.status === 401) {
+            chrome.storage.local.remove(["token"], () => {
+              console.log("[Auto Sync] Unauthorized (401) - Token removed from storage.");
+            });
+            const error = new Error("Login Required");
+            error.status = 401;
+            throw error;
           }
-          existing.contexts[currentContext] = {
-            syncState: "synced",
-            timestamp: new Date().toISOString()
-          };
-          const updated = {
-            ...existing,
-            status: "Accepted",
-            timestamp: new Date().toISOString()
-          };
-          chrome.storage.local.set({ [problemKey]: updated }, () => {
+          if (response.status === 403) {
+            const error = new Error("You don't have permission to perform this sync.");
+            error.status = 403;
+            throw error;
+          }
+          if (response.status === 404) {
+            const error = new Error("Sync service unavailable.");
+            error.status = 404;
+            throw error;
+          }
+          if (response.status >= 500) {
+            const error = new Error("Server error. Please try again later.");
+            error.status = response.status;
+            throw error;
+          }
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            const error = new Error(errData.error || "Unable to sync right now. Please try again.");
+            error.status = response.status;
+            throw error;
+          }
+          return response.json();
+        })
+        .then((res) => {
+          console.log(`LeetCode Tracker [Auto Sync]: Auto sync success for URL: ${payload.url} under context ${currentContext}`);
+          showNotification("success");
+          updateSyncState(problemKey, currentContext, "synced", "Synced Successfully", () => {
             sendResponse({ success: true, data: res });
           });
-        });
-      })
-      .catch((err) => {
-        console.error("LeetCode Tracker [Auto Sync]: Complete technical error:", err);
-        
-        let state = "failed";
-        let errorMsg = "Unable to sync right now. Please try again.";
-        let notificationType = null;
+        })
+        .catch((err) => {
+          console.error("LeetCode Tracker [Auto Sync]: Complete technical error:", err);
 
-        if (err && err.status === 401) {
-          state = "pending_auth";
-          errorMsg = "CodePrep authentication expired. Please login again.";
-          notificationType = "auth_expired";
-        } else if (err && err.status === 403) {
-          state = "failed";
-          errorMsg = "You don't have permission to perform this sync.";
-        } else if (err && err.status === 404) {
-          state = "failed";
-          errorMsg = "Sync service unavailable.";
-        } else if (err && err.status >= 500) {
-          state = "failed";
-          errorMsg = "Server error. Please try again later.";
-        } else if (
-          !err ||
-          err instanceof TypeError ||
-          (err.message && (
-            err.message.toLowerCase().includes("failed to fetch") ||
-            err.message.toLowerCase().includes("networkerror") ||
-            err.message.toLowerCase().includes("cors") ||
-            err.message.toLowerCase().includes("network connection lost")
-          ))
-        ) {
-          state = "failed";
-          errorMsg = "No internet connection.";
-          notificationType = "network_error";
-        } else if (err && err.message) {
-          const msg = err.message.toLowerCase();
-          if (msg.includes("401") || msg.includes("unauthorized")) {
+          let state = "failed";
+          let errorMsg = "Unable to sync right now. Please try again.";
+          let notificationType = null;
+
+          if (err && err.status === 401) {
             state = "pending_auth";
-            errorMsg = "CodePrep authentication expired. Please login again.";
+            errorMsg = "Login Required";
             notificationType = "auth_expired";
-          } else if (msg.includes("403")) {
+          } else if (err && err.status === 403) {
             state = "failed";
             errorMsg = "You don't have permission to perform this sync.";
-          } else if (msg.includes("404")) {
+          } else if (err && err.status === 404) {
             state = "failed";
             errorMsg = "Sync service unavailable.";
-          } else if (msg.includes("500")) {
+          } else if (err && err.status >= 500) {
             state = "failed";
-            errorMsg = "Server error. Please try again later.";
-          } else {
-            errorMsg = err.message;
+            errorMsg = "Waiting for Server...";
+            enqueueSubmission(problemKey, payload, currentContext);
+          } else if (
+            !err ||
+            err instanceof TypeError ||
+            (err.message && (
+              err.message.toLowerCase().includes("failed to fetch") ||
+              err.message.toLowerCase().includes("networkerror") ||
+              err.message.toLowerCase().includes("cors") ||
+              err.message.toLowerCase().includes("network connection lost")
+            ))
+          ) {
+            state = "failed";
+            errorMsg = "Waiting for Internet...";
+            notificationType = "network_error";
+            enqueueSubmission(problemKey, payload, currentContext);
+          } else if (err && err.message) {
+            const msg = err.message.toLowerCase();
+            if (msg.includes("401") || msg.includes("unauthorized")) {
+              state = "pending_auth";
+              errorMsg = "Login Required";
+              notificationType = "auth_expired";
+            } else if (msg.includes("403")) {
+              state = "failed";
+              errorMsg = "You don't have permission to perform this sync.";
+            } else if (msg.includes("404")) {
+              state = "failed";
+              errorMsg = "Sync service unavailable.";
+            } else if (msg.includes("500")) {
+              state = "failed";
+              errorMsg = "Waiting for Server...";
+              enqueueSubmission(problemKey, payload, currentContext);
+            } else {
+              errorMsg = err.message;
+            }
           }
-        }
 
-        if (notificationType) {
-          showNotification(notificationType);
-        }
-
-        chrome.storage.local.get([problemKey], (problemResult) => {
-          const existing = problemResult[problemKey] || {};
-          if (!existing.contexts) {
-            existing.contexts = {};
+          if (notificationType) {
+            showNotification(notificationType);
           }
-          existing.contexts[currentContext] = {
-            syncState: state,
-            syncError: errorMsg,
-            timestamp: new Date().toISOString()
-          };
-          const updated = {
-            ...existing,
-            status: "Accepted",
-            timestamp: new Date().toISOString()
-          };
-          chrome.storage.local.set({ [problemKey]: updated }, () => {
+
+          updateSyncState(problemKey, currentContext, state, errorMsg, () => {
             sendResponse({ success: false, error: errorMsg });
           });
         });
-      });
     });
     return true; // async response
   } else if (request.action === "showSyncNotification") {
@@ -255,6 +212,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Return true to indicate we wish to send a response asynchronously
   return true;
+});
+
+// Alarm Listener for Queue Processing
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "codeprep_retry_alarm") {
+    processQueue();
+  }
 });
 
 function getSyncContext(payload) {
@@ -272,6 +236,206 @@ function getSyncContext(payload) {
     return `sheet_${payload.sheet}`;
   }
   return 'general';
+}
+
+function updateSyncState(problemKey, currentContext, syncState, syncError, callback) {
+  chrome.storage.local.get([problemKey], (problemResult) => {
+    const existing = problemResult[problemKey] || {};
+    if (!existing.contexts) {
+      existing.contexts = {};
+    }
+    existing.contexts[currentContext] = {
+      syncState: syncState,
+      syncError: syncError,
+      timestamp: new Date().toISOString()
+    };
+    const updated = {
+      ...existing,
+      status: "Accepted",
+      timestamp: new Date().toISOString()
+    };
+    chrome.storage.local.set({ [problemKey]: updated }, () => {
+      if (callback) callback();
+    });
+  });
+}
+
+function verifyTokenValidity(token) {
+  return fetch(`${CONFIG.API_BASE_URL}/api/auth/me`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  })
+    .then(response => response.ok)
+    .catch(() => false);
+}
+
+function attemptBrowserSessionRecovery() {
+  return new Promise((resolve) => {
+    chrome.tabs.query({}, (tabs) => {
+      if (!tabs || tabs.length === 0) {
+        return resolve(null);
+      }
+      const allowedDomains = ["localhost:5173", "127.0.0.1:5173", "code-prep-three.vercel.app"];
+      const codePrepTabs = tabs.filter(t => t.url && allowedDomains.some(domain => t.url.includes(domain)));
+      if (codePrepTabs.length === 0) {
+        return resolve(null);
+      }
+
+      let resolved = false;
+      let checkedCount = 0;
+      codePrepTabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, { action: "getTokenFromBrowser" }, (response) => {
+          checkedCount++;
+          if (response && response.token) {
+            if (!resolved) {
+              resolved = true;
+              resolve(response.token);
+            }
+          }
+          if (checkedCount === codePrepTabs.length && !resolved) {
+            resolve(null);
+          }
+        });
+      });
+    });
+  });
+}
+
+function getOrRecoverToken() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["token"], async (result) => {
+      let token = result.token;
+      if (token) {
+        const isValid = await verifyTokenValidity(token);
+        if (isValid) {
+          return resolve(token);
+        }
+      }
+
+      console.log("[Auto Sync] Token missing or invalid. Attempting silent browser recovery...");
+      const recoveredToken = await attemptBrowserSessionRecovery();
+      if (recoveredToken) {
+        const isValid = await verifyTokenValidity(recoveredToken);
+        if (isValid) {
+          console.log("[Auto Sync] Session successfully recovered from browser tab.");
+          chrome.storage.local.set({ token: recoveredToken });
+          return resolve(recoveredToken);
+        }
+      }
+
+      resolve(null);
+    });
+  });
+}
+
+function enqueueSubmission(problemKey, payload, syncContext) {
+  chrome.storage.local.get(["sync_queue"], (result) => {
+    let queue = result.sync_queue || [];
+    const exists = queue.some(item => item.problemKey === problemKey && item.syncContext === syncContext);
+    if (!exists) {
+      queue.push({
+        problemKey,
+        payload,
+        syncContext,
+        timestamp: Date.now()
+      });
+      chrome.storage.local.set({ sync_queue: queue }, () => {
+        console.log(`[Queue] Enqueued problem ${problemKey} for context ${syncContext}`);
+        chrome.alarms.create("codeprep_retry_alarm", { periodInMinutes: 1 });
+      });
+    }
+  });
+}
+
+async function processQueue() {
+  const token = await getOrRecoverToken();
+  if (!token) {
+    console.log("[Queue] Retry skipped: Authentication required.");
+    return;
+  }
+
+  chrome.storage.local.get(["sync_queue"], (result) => {
+    let queue = result.sync_queue || [];
+    if (queue.length === 0) {
+      chrome.alarms.clear("codeprep_retry_alarm");
+      return;
+    }
+
+    console.log(`[Queue] Processing ${queue.length} items in sync queue...`);
+    let pending = [...queue];
+    let processedCount = 0;
+
+    queue.forEach((item) => {
+      const { problemKey, payload, syncContext } = item;
+
+      // Update context sync state to Retrying...
+      updateSyncState(problemKey, syncContext, "syncing", "Retrying...");
+
+      fetch(`${CONFIG.API_BASE_URL}/api/extension/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...payload, syncContext })
+      })
+        .then(async (response) => {
+          if (response.status === 401) {
+            chrome.storage.local.remove(["token"]);
+            throw { status: 401 };
+          }
+          if (!response.ok) {
+            throw { status: response.status };
+          }
+          return response.json();
+        })
+        .then((res) => {
+          console.log(`[Queue] Successfully synced queued item ${problemKey}`);
+          pending = pending.filter(p => !(p.problemKey === problemKey && p.syncContext === syncContext));
+
+          chrome.storage.local.get([problemKey], (problemResult) => {
+            const existing = problemResult[problemKey] || {};
+            if (!existing.contexts) {
+              existing.contexts = {};
+            }
+            existing.contexts[syncContext] = {
+              syncState: "synced",
+              timestamp: new Date().toISOString()
+            };
+            const updated = {
+              ...existing,
+              status: "Accepted",
+              timestamp: new Date().toISOString()
+            };
+            chrome.storage.local.set({ [problemKey]: updated });
+          });
+        })
+        .catch((err) => {
+          console.error(`[Queue] Failed to sync item ${problemKey}:`, err);
+          let errorMsg = "Waiting for Internet...";
+          if (err && err.status >= 500) {
+            errorMsg = "Waiting for Server...";
+          } else if (err && err.status === 401) {
+            errorMsg = "Login Required";
+          }
+          updateSyncState(problemKey, syncContext, "failed", errorMsg);
+        })
+        .finally(() => {
+          processedCount++;
+          if (processedCount === queue.length) {
+            chrome.storage.local.set({ sync_queue: pending }, () => {
+              if (pending.length === 0) {
+                console.log("[Queue] Queue empty. Clearing retry alarm.");
+                chrome.alarms.clear("codeprep_retry_alarm");
+                showNotification("success");
+              }
+            });
+          }
+        });
+    });
+  });
 }
 
 function showNotification(type) {

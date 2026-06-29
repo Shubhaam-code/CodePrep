@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Append active editor details to response payload
         details.extractedCode = codeInfo.code;
         details.extractedLanguage = codeInfo.language;
-        
+
         console.log("LeetCode Tracker: Extracted Details:", details);
         sendResponse({ success: true, data: details });
       } catch (error) {
@@ -30,7 +30,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 function extractProblemDetails() {
   const url = window.location.href;
-  
+
   // Extract Title
   let rawTitle = "";
   let cleanTitle = "";
@@ -39,7 +39,7 @@ function extractProblemDetails() {
   // 1. Look for LeetCode title elements in the DOM (modern UI)
   const titleSelector = 'div.text-title-large, span.text-title-large, [data-cy="question-title"], h4, div[class*="question-title"]';
   const titleEl = document.querySelector(titleSelector);
-  
+
   if (titleEl) {
     rawTitle = titleEl.textContent.trim();
   } else {
@@ -150,7 +150,7 @@ function getProblemKey(url) {
     if (match) {
       return `leetcode_problem_${match[1]}`;
     }
-  } catch (e) {}
+  } catch (e) { }
   return `leetcode_problem_${url}`;
 }
 
@@ -185,12 +185,12 @@ function extractMetadataFromUrl() {
   try {
     const urlParams = new URLSearchParams(window.location.search);
 
-    const company   = urlParams.get('company')   || null;
+    const company = urlParams.get('company') || null;
     const challenge = urlParams.get('challenge') || null;
-    const dayStr    = urlParams.get('day');
-    const day       = dayStr ? Number(dayStr) : null;
-    const pattern   = urlParams.get('pattern')   || null;
-    const sheet     = urlParams.get('sheet')     || null;
+    const dayStr = urlParams.get('day');
+    const day = dayStr ? Number(dayStr) : null;
+    const pattern = urlParams.get('pattern') || null;
+    const sheet = urlParams.get('sheet') || null;
 
     const hasContextParams = company || challenge || (day !== null) || pattern || sheet;
 
@@ -241,7 +241,7 @@ function checkSubmissionStatus() {
           return "Accepted";
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // 3. Fallback: check style colors on elements containing "Accepted" text
@@ -261,7 +261,7 @@ function checkSubmissionStatus() {
             return "Accepted";
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     }
   }
   return null;
@@ -279,7 +279,7 @@ function saveAcceptedStatus() {
 
   chrome.storage.local.get([currentProblemKey], (result) => {
     const existing = result[currentProblemKey] || {};
-    
+
     const urlParams = new URLSearchParams(window.location.search);
     const companyFromUrl = urlParams.get("company");
     const challengeFromUrl = urlParams.get("challenge");
@@ -302,7 +302,7 @@ function saveAcceptedStatus() {
     });
 
     const contextData = (existing.contexts && existing.contexts[currentContext]) || {};
-    
+
     // Check if status is already Accepted and if it's already syncing/synced to prevent duplicate requests
     if (existing.status === "Accepted" && (contextData.syncState === "synced" || contextData.syncState === "syncing")) {
       activeSyncLocks.delete(currentProblemKey);
@@ -334,7 +334,7 @@ function saveAcceptedStatus() {
 
     chrome.storage.local.set({ [currentProblemKey]: data }, () => {
       console.log(`LeetCode Tracker [Auto Sync]: Status set to syncing for problem ${currentProblemKey} under context ${currentContext}`);
-      
+
       // Extract active editor details and problem metadata
       getActiveCodeAndLanguage().then((codeInfo) => {
         try {
@@ -363,14 +363,14 @@ function saveAcceptedStatus() {
             // Release lock once background script returns response
             activeSyncLocks.delete(currentProblemKey);
             console.log(`[Auto Sync] Lock released for ${currentProblemKey}`);
-            
+
             if (chrome.runtime.lastError) {
               console.warn("[Auto Sync] Error receiving background response:", chrome.runtime.lastError.message);
             }
           });
         } catch (error) {
           console.error("LeetCode Tracker [Auto Sync]: Error preparing auto sync payload:", error);
-          
+
           // Release lock on error
           activeSyncLocks.delete(currentProblemKey);
           console.log(`[Auto Sync] Lock released for ${currentProblemKey}`);
@@ -436,19 +436,19 @@ extractMetadataFromUrl();
 function deepQuerySelector(selector) {
   function search(node) {
     if (!node) return null;
-    
+
     // Test standard selector
     if (node.querySelector) {
       const match = node.querySelector(selector);
       if (match) return match;
     }
-    
+
     // Traverse shadow roots
     if (node.shadowRoot) {
       const match = search(node.shadowRoot);
       if (match) return match;
     }
-    
+
     // Traverse accessible same-origin iframes
     if (node.tagName === 'IFRAME') {
       try {
@@ -456,9 +456,9 @@ function deepQuerySelector(selector) {
           const match = search(node.contentDocument.documentElement);
           if (match) return match;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
-    
+
     // Traverse standard children
     const children = node.children || node.childNodes;
     if (children) {
@@ -469,37 +469,37 @@ function deepQuerySelector(selector) {
         }
       }
     }
-    
+
     return null;
   }
-  
+
   return search(document.documentElement);
 }
 
 // Deep query selector all that aggregates matches across shadow roots and accessible iframes
 function deepQuerySelectorAll(selector) {
   const matches = [];
-  
+
   function search(node) {
     if (!node) return;
-    
+
     if (node.querySelectorAll) {
       const found = node.querySelectorAll(selector);
       found.forEach(m => matches.push(m));
     }
-    
+
     if (node.shadowRoot) {
       search(node.shadowRoot);
     }
-    
+
     if (node.tagName === 'IFRAME') {
       try {
         if (node.contentDocument && node.contentDocument.documentElement) {
           search(node.contentDocument.documentElement);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
-    
+
     const children = node.children || node.childNodes;
     if (children) {
       for (let i = 0; i < children.length; i++) {
@@ -509,7 +509,7 @@ function deepQuerySelectorAll(selector) {
       }
     }
   }
-  
+
   search(document.documentElement);
   return matches;
 }
@@ -567,7 +567,7 @@ function runDOMInspector() {
         if (element.contentDocument && element.contentDocument.documentElement) {
           traverse(element.contentDocument.documentElement);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Traverse children
@@ -624,20 +624,20 @@ function runDOMInspector() {
 function detectEditorType() {
   const isMonaco = deepQuerySelector('.monaco-editor, .view-lines, .view-line') !== null;
   const isCodeMirror = deepQuerySelector('.cm-editor, .cm-content, .cm-line, .CodeMirror, .CodeMirror-code') !== null;
-  
+
   if (isMonaco) return "Monaco Editor";
   if (isCodeMirror) return "CodeMirror";
-  
+
   const isCustom = deepQuerySelector('[class*="editor"], [id*="editor"]') !== null;
   if (isCustom) return "LeetCode Custom Editor";
-  
+
   return "Unknown Editor";
 }
 
 // Helper to log candidate DOM nodes using deep boundaries
 function logEditorDOMNodes() {
   console.log("LeetCode Tracker [Debug]: Scanning for editor candidate DOM nodes:");
-  
+
   const selectors = {
     'Monaco container': '.monaco-editor',
     'Monaco lines': '.view-lines',
@@ -663,7 +663,7 @@ function logEditorDOMNodes() {
 function mapLanguageId(langId) {
   if (!langId) return null;
   const id = langId.toLowerCase();
-  
+
   const langMap = {
     'cpp': 'C++',
     'cplusplus': 'C++',
@@ -690,7 +690,7 @@ function mapLanguageId(langId) {
 // Fallback to reading Monaco DOM lines or textareas
 function getMonacoDOMFallback() {
   console.log("LeetCode Tracker [Debug]: Running Monaco DOM fallbacks...");
-  
+
   // Strategy 1: Monaco DOM lines
   const monacoLines = deepQuerySelectorAll('.view-line');
   if (monacoLines.length > 0) {
@@ -712,7 +712,7 @@ function getMonacoDOMFallback() {
       }
     }
   }
-  
+
   if (textareas.length > 0) {
     const code = textareas[0].value || "";
     if (code.trim().length > 0) {
@@ -728,13 +728,13 @@ function getMonacoDOMFallback() {
 function getDOMSelectedLanguage() {
   console.log("LeetCode Tracker [Debug]: Scanning for language selectors in DOM...");
   const knownLanguages = [
-    "C++", "Java", "Python", "Python3", "C#", "JavaScript", "TypeScript", 
-    "Go", "Rust", "C", "Ruby", "Swift", "Kotlin", "Scala", "PHP", 
+    "C++", "Java", "Python", "Python3", "C#", "JavaScript", "TypeScript",
+    "Go", "Rust", "C", "Ruby", "Swift", "Kotlin", "Scala", "PHP",
     "Racket", "Erlang", "Elixir", "Dart"
   ];
-  
+
   const candidates = [];
-  
+
   // Look in editor toolbar / header areas first
   const toolbarContainer = deepQuerySelector('[class*="editor-header"], [class*="toolbar"], [class*="menu"], [class*="ControlPanel"], [class*="navigation"]');
   if (toolbarContainer) {
@@ -795,7 +795,7 @@ function getDOMSelectedLanguage() {
 function getActiveCodeAndLanguage() {
   return new Promise((resolve) => {
     console.log("\n--- LeetCode Tracker Code Extraction Triggered ---");
-    
+
     // Run diagnostics
     try {
       runDOMInspector();
@@ -813,10 +813,10 @@ function getActiveCodeAndLanguage() {
           window.removeEventListener('message', handleMessage);
           clearTimeout(timeout);
           const resolvedLang = mapLanguageId(event.data.languageId);
-          
+
           console.log(`Models found: ${event.data.modelsCount}`);
           console.log(`Selected model length: ${event.data.code.length}`);
-          
+
           resolve({
             code: event.data.code,
             language: resolvedLang
@@ -864,11 +864,11 @@ function getActiveCodeAndLanguage() {
         console.log("LeetCode Tracker [Debug]: Active element is CodeMirror content area.");
         const activeCode = targetEl.innerText || "";
         const language = getDOMSelectedLanguage() || "Unknown";
-        
+
         console.log(`Found CodeMirror instances: N/A (Using activeElement)`);
         console.log(`Selected editor index: activeElement`);
         console.log(`Code length: ${activeCode.length}`);
-        
+
         resolvePromise({
           code: activeCode,
           language: language
@@ -880,26 +880,26 @@ function getActiveCodeAndLanguage() {
       const cmInstances = deepQuerySelectorAll('.cm-content');
       if (cmInstances.length > 0) {
         console.log(`Found CodeMirror instances: ${cmInstances.length}`);
-        
+
         let activeCode = "";
         let selectedIdx = -1;
-        
+
         const candidates = cmInstances.map((inst, idx) => {
           const text = inst.innerText || inst.textContent || "";
           const rect = inst.getBoundingClientRect();
-          
+
           let isVisible = rect.width > 0 && rect.height > 0;
           try {
             const style = window.getComputedStyle(inst);
             if (style.display === 'none' || style.visibility === 'hidden') {
               isVisible = false;
             }
-          } catch (e) {}
-          
+          } catch (e) { }
+
           const isEditable = inst.getAttribute('contenteditable') === 'true' && inst.getAttribute('aria-readonly') !== 'true';
-          
+
           console.log(`LeetCode Tracker [Debug]: CodeMirror instance [${idx}] - Length: ${text.length}, Editable: ${isEditable}, Visible: ${isVisible}`);
-          
+
           return {
             index: idx,
             text: text,
@@ -908,24 +908,24 @@ function getActiveCodeAndLanguage() {
             isVisible: isVisible
           };
         });
-        
+
         // Filter according to preferences:
         // 1. Visible & Editable
         let filtered = candidates.filter(c => c.isEditable && c.isVisible);
         let strategy = "Visible & Editable";
-        
+
         // 2. Fallback to Editable only if no Visible & Editable
         if (filtered.length === 0) {
           filtered = candidates.filter(c => c.isEditable);
           strategy = "Editable only (Fallback)";
         }
-        
+
         // 3. Fallback to any if none editable
         if (filtered.length === 0) {
           filtered = candidates;
           strategy = "All instances (Fallback)";
         }
-        
+
         if (filtered.length > 0) {
           // Find the largest one
           let best = filtered[0];
@@ -938,13 +938,13 @@ function getActiveCodeAndLanguage() {
           activeCode = best.text;
           console.log(`LeetCode Tracker [Debug]: Selection strategy: ${strategy}`);
         }
-        
+
         console.log(`Selected editor index: ${selectedIdx}`);
         console.log(`Code length: ${activeCode.length}`);
-        
+
         const language = getDOMSelectedLanguage() || "Unknown";
         console.log(`LeetCode Tracker [Debug]: Language detected = ${language}`);
-        
+
         resolvePromise({
           code: activeCode,
           language: language
@@ -956,7 +956,7 @@ function getActiveCodeAndLanguage() {
       const fallbackCode = getMonacoDOMFallback();
       const fallbackLang = getDOMSelectedLanguage() || "Unknown";
       console.log(`LeetCode Tracker [Debug]: Monaco DOM Fallback results - Code Length: ${fallbackCode.length} | Language detected: ${fallbackLang}`);
-      
+
       resolvePromise({
         code: fallbackCode,
         language: fallbackLang

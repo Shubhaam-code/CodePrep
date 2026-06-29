@@ -1,319 +1,125 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+/**
+ * CompaniesPage.jsx  — Performance-optimised rewrite
+ *
+ * What changed vs the original:
+ *
+ *  1. Imports cleaned up — removed unused FaCheckCircle, FaArrowRight,
+ *     FaSpinner. Tree-shaking now eliminates those icons from the bundle.
+ *
+ *  2. All shared constants / helpers imported from companyUtils.js instead
+ *     of being redefined locally. Zero duplication.
+ *
+ *  3. buildSolvedMap() — O(n) one-time pass over user.solvedQuestions builds
+ *     a Map<companyKey, count>. Each card now does O(1) Map.get() instead of
+ *     O(n) .filter() per card.
+ *
+ *  4. isFocused state moved into <CompanySearchBar> — toggling search focus
+ *     no longer re-renders the parent or the card grid.
+ *
+ *  5. visible array wrapped in useMemo — was previously an uncached
+ *     filtered.slice() recomputed on every render, even when nothing changed.
+ *
+ *  6. CompanyGrid with @tanstack/react-virtual — renders only visible rows.
+ *     With 500 companies the DOM stays at ~20 nodes instead of 500.
+ *
+ *  7. Inline <style> shimmer tag removed — CSS lives in index.css now.
+ *
+ *  8. CompanyCard replaced by CompanyChip — zero framer-motion overhead per
+ *     card, direct DOM hover mutation, stable module-level style objects.
+ */
+import React, { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { FaSearch, FaBuilding, FaCheckCircle, FaArrowRight, FaSpinner } from 'react-icons/fa';
+import { motion } from 'framer-motion';
+import { FaBuilding, FaTrophy } from 'react-icons/fa';
 import apiClient from '../../api/axios';
 import Sidebar from '../../components/dashboard/Sidebar';
 import { useAppSelector } from '../../store/store';
+import { CompanyGrid }     from '../../components/company/CompanyGrid';
+import { CompanySearchBar } from '../../components/company/CompanySearchBar';
+import {
+  ORANGE, SIDEBAR_W, PAGE_SIZE,
+  AVATAR_STYLES,
+  matchesFilter, buildSolvedMap,
+} from '../../utils/companyUtils';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-const SIDEBAR_W = 220;
-const ORANGE = '#FF6B1A';
-const HOT_COMPANIES = new Set(['google', 'amazon', 'microsoft', 'meta', 'flipkart', 'apple', 'netflix']);
-const PAGE_SIZE = 20;
+// ─── Sub-components (stable, defined at module level) ─────────────────────────
 
-const FAANG = new Set(['google', 'meta', 'amazon', 'apple', 'netflix', 'microsoft']);
-const MNC = new Set(['adobe', 'uber', 'salesforce', 'oracle', 'sap', 'ibm', 'accenture', 'deloitte', 'paypal', 'visa', 'mastercard', 'atlassian', 'shopify', 'twitter', 'linkedin', 'spotify', 'airbnb', 'lyft', 'stripe', 'square']);
-const INDIA = new Set(['flipkart', 'paytm', 'swiggy', 'zomato', 'airtel', 'jio', 'infosys', 'wipro', 'tcs', 'hcl', 'snapdeal', 'ola', 'phonepe', 'meesho', 'zepto', 'myntra', 'cred', 'razorpay', 'groww', 'zerodha']);
-
-const FILTER_PILLS = [
-  { id: 'all',     emoji: '🌟', label: 'All' },
-  { id: 'faang',   emoji: '🔥', label: 'FAANG' },
-  { id: 'mnc',     emoji: '💼', label: 'MNC' },
-  { id: 'startup', emoji: '🚀', label: 'Startup' },
-  { id: 'india',   emoji: '🇮🇳', label: 'India' },
-];
-
-// ─── Avatar color palette (cycles by first letter) ───────────────────────────
-const AVATAR_STYLES = [
-  { bg: '#1a0f00', color: '#FF6B1A', border: 'rgba(255,107,26,0.18)' }, // A, E, I, M, Q, U, Y
-  { bg: '#0a0f1a', color: '#3b82f6', border: 'rgba(59,130,246,0.18)' },  // B, F, J, N, R, V, Z
-  { bg: '#0a1a0f', color: '#22c55e', border: 'rgba(34,197,94,0.18)' },  // C, G, K, O, S, W
-  { bg: '#1a0a1a', color: '#a855f7', border: 'rgba(168,85,247,0.18)' }, // D, H, L, P, T, X
-];
-
-function getAvatarStyle(name = '') {
-  const code = name.charCodeAt(0) - 65; // A=0, B=1 …
-  const idx = Math.max(0, code) % AVATAR_STYLES.length;
-  return AVATAR_STYLES[idx];
-}
-
-// ─── Company filter helper ────────────────────────────────────────────────────
-function matchesFilter(companyName, filterId) {
-  const key = companyName.toLowerCase().replace(/\s+/g, '');
-  if (filterId === 'all') return true;
-  if (filterId === 'faang') return FAANG.has(key) || [...FAANG].some(f => key.includes(f));
-  if (filterId === 'mnc') return MNC.has(key) || [...MNC].some(m => key.includes(m));
-  if (filterId === 'india') return INDIA.has(key) || [...INDIA].some(i => key.includes(i));
-  if (filterId === 'startup') {
-    const known = new Set([...FAANG, ...MNC, ...INDIA]);
-    return !([...known].some(k => key.includes(k)));
-  }
-  return true;
-}
-
-// ─── Fallback tag data per company ───────────────────────────────────────────
-const FALLBACK_TAGS = {
-  google:    ['Array', 'DP', 'Graph'],
-  amazon:    ['Array', 'Tree', 'Design'],
-  microsoft: ['Tree', 'DP', 'Graph'],
-  meta:      ['Array', 'Hash Table', 'Graph'],
-  flipkart:  ['Array', 'DP', 'Greedy'],
-  apple:     ['Array', 'String', 'Math'],
-  netflix:   ['Array', 'Design', 'Hash Table'],
-  adobe:     ['Array', 'Math', 'String'],
-  uber:      ['Array', 'Graph', 'Tree'],
-  linkedin:  ['Array', 'Graph', 'DP'],
-  twitter:   ['Array', 'Design', 'Hash Table'],
-  default:   ['Array', 'DP', 'Tree'],
-};
-
-function getTopTags(name, metaTags = []) {
-  if (metaTags && metaTags.length > 0) return metaTags.slice(0, 3);
-  const key = name.toLowerCase();
-  return FALLBACK_TAGS[key] || FALLBACK_TAGS.default;
-}
-
-// ─── Animated Counter Component ───────────────────────────────────────────────
-const AnimatedCounter = memo(function AnimatedCounter({ value, duration = 800 }) {
-  const [displayValue, setDisplayValue] = useState('0');
-
-  useEffect(() => {
-    const stringVal = String(value);
-    const match = stringVal.match(/^(\d+)(.*)$/);
-    if (!match) {
-      setDisplayValue(stringVal);
-      return;
-    }
-
-    const endNumber = parseInt(match[1], 10);
-    const suffix = match[2] || '';
-    const startTime = performance.now();
-
-    const update = (now) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easeProgress = progress * (2 - progress);
-      const current = Math.floor(easeProgress * endNumber);
-      
-      setDisplayValue(`${current}${suffix}`);
-
-      if (progress < 1) {
-        requestAnimationFrame(update);
-      } else {
-        setDisplayValue(stringVal);
-      }
+// Animated counter for the stats panel
+function AnimatedCounter({ value }) {
+  const [display, setDisplay] = React.useState('0');
+  React.useEffect(() => {
+    const target = Number(String(value).match(/^\d+/)?.[0] ?? 0);
+    const suffix = String(value).replace(/^\d+/, '');
+    if (target === 0) { setDisplay(`0${suffix}`); return; }
+    const start = performance.now();
+    const dur   = 800;
+    const tick  = (now) => {
+      const p = Math.min((now - start) / dur, 1);
+      const e = p * (2 - p); // ease-out-quad
+      setDisplay(`${Math.floor(e * target)}${suffix}`);
+      if (p < 1) requestAnimationFrame(tick);
+      else setDisplay(`${target}${suffix}`);
     };
+    requestAnimationFrame(tick);
+  }, [value]);
+  return <span>{display}</span>;
+}
 
-    requestAnimationFrame(update);
-  }, [value, duration]);
-
-  return <span>{displayValue}</span>;
-});
-
-// ─── Circular SVG Progress Ring ───────────────────────────────────────────────
-const CircularProgress = memo(function CircularProgress({ pct, size = 92, stroke = 7, color = ORANGE }) {
-  const r = (size - stroke * 2) / 2;
+// Circular SVG ring for the stats panel
+const CircularProgress = React.memo(function CircularProgress({ pct, size = 92, stroke = 7 }) {
+  const r    = (size - stroke * 2) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
+  const off  = circ - (pct / 100) * circ;
   return (
     <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={stroke} />
       <motion.circle
-        cx={size / 2} cy={size / 2} r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeLinecap="round"
+        cx={size/2} cy={size/2} r={r}
+        fill="none" stroke={ORANGE} strokeWidth={stroke} strokeLinecap="round"
         strokeDasharray={circ}
         initial={{ strokeDashoffset: circ }}
-        animate={{ strokeDashoffset: offset }}
+        animate={{ strokeDashoffset: off }}
         transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
       />
     </svg>
   );
 });
 
-// ─── Gradient Progress Bar ────────────────────────────────────────────────────
-const GradientBar = memo(function GradientBar({ pct, color, delay = 0 }) {
+// Animated progress bar for the header
+const ProgressBar = React.memo(function ProgressBar({ pct }) {
   return (
-    <div className="relative rounded-full overflow-hidden" style={{ height: 5, backgroundColor: '#1a1a1a' }}>
+    <div className="relative rounded-full overflow-hidden" style={{ height: 6, backgroundColor: '#1a1a1a' }}>
       <motion.div
         className="absolute inset-y-0 left-0 rounded-full"
-        style={{
-          background: pct > 0 ? `linear-gradient(90deg, ${color}90, ${color})` : 'transparent',
-        }}
+        style={{ background: `linear-gradient(90deg, ${ORANGE}80, ${ORANGE})` }}
         initial={{ width: 0 }}
-        animate={{ width: `${Math.min(100, pct)}%` }}
-        transition={{ duration: 0.8, ease: 'easeOut', delay }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
       />
     </div>
   );
 });
 
-// ─── Hero Stat Chip ───────────────────────────────────────────────────────────
-function StatChip({ label, value, sub, accent }) {
+// Stat chip in the glass stats card
+function StatChip({ label, value, accent }) {
   return (
     <div className="flex flex-col">
       <span className="text-[9px] font-black tracking-widest uppercase mb-1" style={{ color: '#4b5563' }}>
         {label}
       </span>
-      <div className="flex items-baseline gap-1">
-        <span className="font-black" style={{ fontSize: '20px', color: accent || '#fff', letterSpacing: '-0.04em' }}>
-          <AnimatedCounter value={value} />
-        </span>
-        {sub && (
-          <span className="text-[11px] font-medium" style={{ color: '#4b5563' }}>
-            {sub}
-          </span>
-        )}
-      </div>
+      <span className="font-black text-xl" style={{ color: accent || '#fff', letterSpacing: '-0.04em' }}>
+        <AnimatedCounter value={value} />
+      </span>
     </div>
   );
 }
 
-// ─── Card Animation Variants ─────────────────────────────────────────────────
-const cardVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: (i) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3, delay: i * 0.03, ease: 'easeOut' },
-  }),
-};
-
-// ─── CompanyCard (Redesigned) ────────────────────────────────────────────────
-const CompanyCard = memo(function CompanyCard({ company, index, solvedCount }) {
-  const name = company.name || company;
-  const displayName = name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, ' ');
-  const avatarStyle = getAvatarStyle(name.toUpperCase());
-  const isHot = HOT_COMPANIES.has(name.toLowerCase());
-  const questionCount = Number(company.questionCount) || 0;
-  const topTags = getTopTags(name, company.topTags);
-  const pct = questionCount > 0 ? Math.round((solvedCount / questionCount) * 100) : 0;
-  const accentColor = isHot ? ORANGE : avatarStyle.color;
-
-  return (
-    <motion.div
-      custom={index}
-      variants={cardVariants}
-      initial="hidden"
-      animate="visible"
-      className="group relative flex flex-col rounded-2xl overflow-hidden"
-      style={{
-        backgroundColor: '#111111',
-        border: `1px solid ${isHot ? 'rgba(255,107,26,0.30)' : '#1e1e1e'}`,
-        boxShadow: isHot ? '0 0 20px rgba(255,107,26,0.06)' : 'none',
-        transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s, background-color 0.2s',
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget;
-        el.style.borderColor = `${accentColor}50`;
-        el.style.boxShadow = `0 12px 32px rgba(0,0,0,0.35), 0 0 0 1px ${accentColor}22`;
-        el.style.transform = 'translateY(-3px)';
-        el.style.backgroundColor = `${accentColor}06`;
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget;
-        el.style.borderColor = isHot ? 'rgba(255,107,26,0.30)' : '#1e1e1e';
-        el.style.boxShadow = isHot ? '0 0 20px rgba(255,107,26,0.06)' : 'none';
-        el.style.transform = 'translateY(0)';
-        el.style.backgroundColor = '#111111';
-      }}
-    >
-      {/* Top color border accent */}
-      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: accentColor }} />
-
-      <Link
-        to={`/company/${name.toLowerCase()}`}
-        className="flex flex-col h-full p-5 pt-6 gap-4"
-        style={{ textDecoration: 'none' }}
-      >
-        {/* Top row: Avatar & Hot Badge */}
-        <div className="flex items-start justify-between">
-          <div className="relative">
-            <div
-              className="w-12 h-12 flex items-center justify-center rounded-xl select-none text-[20px] font-black"
-              style={{
-                backgroundColor: avatarStyle.bg,
-                color: avatarStyle.color,
-                border: `1px solid ${avatarStyle.border}`,
-              }}
-            >
-              {name[0].toUpperCase()}
-            </div>
-            {isHot && (
-              <span
-                className="absolute -top-1.5 -right-1.5 text-[8px] font-black tracking-wider px-1.5 py-0.5 rounded uppercase"
-                style={{ backgroundColor: '#1a0800', color: ORANGE, border: '1px solid rgba(255,107,26,0.25)' }}
-              >
-                🔥 HOT
-              </span>
-            )}
-          </div>
-
-          <span
-            className="text-[10px] font-semibold rounded-lg px-2.5 py-1"
-            style={{ backgroundColor: '#1a1a1a', border: '1px solid #222', color: '#4b5563' }}
-          >
-            {questionCount} Qs
-          </span>
-        </div>
-
-        {/* Company Name + Tag list */}
-        <div className="flex-1 space-y-2">
-          <h3 className="text-white font-black text-[15px] leading-tight capitalize truncate">
-            {displayName}
-          </h3>
-          <div className="flex flex-wrap gap-1">
-            {topTags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[10px] px-2 py-0.5 rounded-md"
-                style={{ backgroundColor: '#1a1a1a', color: '#6b7280', border: '1px solid #222' }}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Progress Tracker */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center text-[10px] font-semibold">
-            <span style={{ color: '#4b5563' }}>{solvedCount} / {questionCount} solved</span>
-            <span style={{ color: accentColor }} className="font-bold">{pct}%</span>
-          </div>
-          <GradientBar pct={pct} color={accentColor} delay={index * 0.02 + 0.1} />
-        </div>
-
-        {/* Action Button */}
-        <div
-          className="w-full text-center text-[12px] font-bold rounded-xl py-2.5 transition-all duration-200"
-          style={{
-            backgroundColor: `${accentColor}12`,
-            border: `1px solid ${accentColor}30`,
-            color: accentColor,
-          }}
-        >
-          Practice Questions →
-        </div>
-      </Link>
-    </motion.div>
-  );
-});
-
-// ─── CompanyCardSkeleton (High fidelity shimmer loader) ───────────────────────
+// Skeleton card — shown while loading
 function CompanyCardSkeleton() {
   return (
     <div
       className="relative flex flex-col rounded-2xl overflow-hidden p-5 pt-6 gap-4"
-      style={{
-        backgroundColor: '#111111',
-        border: '1px solid #1e1e1e',
-        height: '240px',
-      }}
+      style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', height: '252px' }}
     >
       <div className="absolute top-0 inset-x-0 h-[2px] bg-white/5" />
       <div className="flex items-start justify-between">
@@ -337,28 +143,16 @@ function CompanyCardSkeleton() {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CompaniesPage() {
-  const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [sortDir, setSortDir] = useState('asc');
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [isFocused, setIsFocused] = useState(false);
-  const searchRef = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeFilter,    setActiveFilter]    = useState('all');
+  const [sortDir,         setSortDir]         = useState('asc');
+  const [visibleCount,    setVisibleCount]    = useState(PAGE_SIZE);
 
   const { user } = useAppSelector((state) => state.auth);
 
-  // Debounced search
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const debounceTimer = useRef(null);
-  const handleSearchChange = useCallback((e) => {
-    const val = e.target.value;
-    setSearch(val);
-    clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => setDebouncedSearch(val), 300);
-  }, []);
-
-  // Fetch enriched company meta
+  // ── Data fetch — cached by React Query, fetched once ─────────────────────
   const { data: companiesMeta, isLoading, isError, refetch } = useQuery({
     queryKey: ['companies-meta'],
     queryFn: async () => {
@@ -373,67 +167,71 @@ export default function CompaniesPage() {
     staleTime: 10 * 60 * 1000,
   });
 
-  // Calculate dynamic solved status per company name using the global auth user context
-  const getCompanySolvedCount = useCallback((companyName) => {
-    if (!user || !user.solvedQuestions) return 0;
-    const targetContext = `company_${companyName.toLowerCase()}`;
-    return user.solvedQuestions.filter(sq => sq.syncContext === targetContext).length;
-  }, [user]);
+  // ── O(1) solved-count lookup ──────────────────────────────────────────────
+  // buildSolvedMap iterates solvedQuestions ONCE → Map<key,count>.
+  // Previously: .filter() called per card = O(n×s) total.
+  // Now: Map.get() per card = O(1) each = O(n) total.
+  const solvedMap = useMemo(
+    () => buildSolvedMap(user?.solvedQuestions),
+    [user?.solvedQuestions]
+  );
 
-  // Filter and sort the companies
+  // ── Search + filter + sort ────────────────────────────────────────────────
+  // Deps: only recomputes when data, search query, filter, or sort changes.
+  // Debounced search means this runs at most once per 250ms keystroke burst.
   const filtered = useMemo(() => {
     if (!companiesMeta) return [];
     const q = debouncedSearch.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
     let list = companiesMeta;
-
     if (q) {
-      list = list.filter(c => {
-        const key = c.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return key.includes(q);
-      });
+      list = list.filter(c => c.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(q));
     }
-
     if (activeFilter !== 'all') {
       list = list.filter(c => matchesFilter(c.name, activeFilter));
     }
-
-    const sorted = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       const cmp = a.name.localeCompare(b.name);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
-    return sorted;
   }, [companiesMeta, debouncedSearch, activeFilter, sortDir]);
 
-  const visible = filtered.slice(0, visibleCount);
-  const totalCount = companiesMeta?.length || 0;
-  const hasMore = visibleCount < filtered.length;
+  // ── Visible slice — memoised so it isn't recomputed on every parent render
+  const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
-  // Aggregate stats dynamically for the dashboard summary
+  // ── Summary stats ─────────────────────────────────────────────────────────
   const summary = useMemo(() => {
     if (!companiesMeta) return { totalQuestions: 0, totalSolved: 0, pct: 0 };
-    let totalQuestions = 0;
-    let totalSolved = 0;
-
+    let totalQ = 0, totalS = 0;
     for (const c of companiesMeta) {
-      totalQuestions += Number(c.questionCount) || 0;
-      totalSolved += getCompanySolvedCount(c.name);
+      totalQ += Number(c.questionCount) || 0;
+      totalS += solvedMap.get(c.name.toLowerCase()) ?? 0;
     }
+    return { totalQuestions: totalQ, totalSolved: totalS, pct: totalQ > 0 ? Math.round((totalS / totalQ) * 100) : 0 };
+  }, [companiesMeta, solvedMap]);
 
-    const pct = totalQuestions > 0 ? Math.round((totalSolved / totalQuestions) * 100) : 0;
-    return { totalQuestions, totalSolved, pct };
-  }, [companiesMeta, getCompanySolvedCount]);
+  const totalCount = companiesMeta?.length ?? 0;
+  const hasMore    = visibleCount < filtered.length;
+
+  // ── Stable callbacks (passed to memoised children) ────────────────────────
+  const handleSearchChange = useCallback((val) => {
+    setDebouncedSearch(val);
+    setVisibleCount(PAGE_SIZE);
+  }, []);
+  const handleFilterChange = useCallback((id) => {
+    setActiveFilter(id);
+    setVisibleCount(PAGE_SIZE);
+  }, []);
+  const handleSortChange = useCallback((dir) => setSortDir(dir), []);
+  const handleLoadMore   = useCallback(() => setVisibleCount(v => v + PAGE_SIZE), []);
 
   return (
     <div className="min-h-screen text-white antialiased" style={{ backgroundColor: '#0A0A0A' }}>
       <Sidebar />
 
       <div className="flex flex-col min-h-screen" style={{ marginLeft: SIDEBAR_W }}>
-        {/* ════════════════════════════════════════════════════════════
-            HERO HEADER
-            ════════════════════════════════════════════════════════════ */}
+
+        {/* ── HERO HEADER ─────────────────────────────────────────────── */}
         <header className="px-10 pt-10 pb-10" style={{ borderBottom: '1px solid #141414' }}>
-          {/* Breadcrumb */}
           <div className="flex items-center gap-2 mb-7">
             <FaBuilding size={12} style={{ color: ORANGE }} />
             <span className="text-[11px] font-semibold tracking-widest uppercase" style={{ color: '#4b5563' }}>
@@ -441,27 +239,19 @@ export default function CompaniesPage() {
             </span>
           </div>
 
-          {/* Title + glass stats panel */}
           <div className="flex flex-col xl:flex-row xl:items-center gap-8">
-            {/* Left description */}
+            {/* Left: title + description + progress */}
             <div className="flex-1 space-y-3">
               <motion.h1
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
                 className="font-black leading-none tracking-tight"
-                style={{
-                  fontSize: 'clamp(36px, 3.8vw, 52px)',
-                  color: '#ffffff',
-                  letterSpacing: '-0.035em',
-                }}
+                style={{ fontSize: 'clamp(36px, 3.8vw, 52px)', color: '#ffffff', letterSpacing: '-0.035em' }}
               >
-                Company
-                <span style={{ color: ORANGE }}> Questions</span>
+                Company<span style={{ color: ORANGE }}> Questions</span>
               </motion.h1>
               <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.08 }}
                 className="text-[15px] font-normal max-w-lg"
                 style={{ color: '#6b7280', lineHeight: 1.65 }}
@@ -469,12 +259,9 @@ export default function CompaniesPage() {
                 Practice the most frequently asked interview questions from top companies. Filter by category, search names, and track your metrics.
               </motion.p>
 
-              {/* Progress bar */}
               {!isLoading && !isError && companiesMeta && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2 }}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
                   className="pt-2 max-w-lg space-y-2"
                 >
                   <div className="flex items-center justify-between">
@@ -485,17 +272,7 @@ export default function CompaniesPage() {
                       {summary.pct}% Complete
                     </span>
                   </div>
-                  <div className="relative rounded-full overflow-hidden" style={{ height: 6, backgroundColor: '#1a1a1a' }}>
-                    <motion.div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        background: `linear-gradient(90deg, ${ORANGE}80, ${ORANGE})`,
-                      }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${summary.pct}%` }}
-                      transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
-                    />
-                  </div>
+                  <ProgressBar pct={summary.pct} />
                 </motion.div>
               )}
             </div>
@@ -503,8 +280,7 @@ export default function CompaniesPage() {
             {/* Right: Glass stats card */}
             {!isLoading && !isError && companiesMeta && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.97 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.4, delay: 0.15 }}
                 className="flex-shrink-0 relative rounded-2xl overflow-hidden"
                 style={{
@@ -514,20 +290,16 @@ export default function CompaniesPage() {
                   minWidth: '380px',
                 }}
               >
-                {/* Top accent line */}
                 <div className="absolute top-0 inset-x-0 h-[2px]" style={{ backgroundColor: ORANGE }} />
-
                 <div className="px-7 py-6">
                   <div className="flex items-center gap-6 mb-6">
                     <div className="relative flex-shrink-0">
-                      <CircularProgress pct={summary.pct} size={92} stroke={7} color={ORANGE} />
+                      <CircularProgress pct={summary.pct} />
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
                         <span className="font-black text-white" style={{ fontSize: '20px', letterSpacing: '-0.04em' }}>
                           <AnimatedCounter value={summary.pct} />%
                         </span>
-                        <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#4b5563' }}>
-                          done
-                        </span>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#4b5563' }}>done</span>
                       </div>
                     </div>
                     <div>
@@ -539,15 +311,13 @@ export default function CompaniesPage() {
                       </p>
                     </div>
                   </div>
-
-                  {/* Summary metric cells */}
                   <div
                     className="grid grid-cols-3 gap-y-5 gap-x-2"
                     style={{ borderTop: '1px solid #1a1a1a', paddingTop: '20px' }}
                   >
-                    <StatChip label="Total Companies" value={totalCount} />
+                    <StatChip label="Total Companies"     value={totalCount} />
                     <StatChip label="Questions Available" value={summary.totalQuestions} />
-                    <StatChip label="Questions Solved" value={summary.totalSolved} accent={ORANGE} />
+                    <StatChip label="Questions Solved"    value={summary.totalSolved} accent={ORANGE} />
                   </div>
                 </div>
               </motion.div>
@@ -555,150 +325,43 @@ export default function CompaniesPage() {
           </div>
         </header>
 
-        {/* ════════════════════════════════════════════════════════════
-            SEARCH, FILTERS AND COMPANY GRID
-            ════════════════════════════════════════════════════════════ */}
+        {/* ── SEARCH, FILTERS, GRID ────────────────────────────────────── */}
         <main className="flex-1 px-10 py-8 space-y-6">
-          {/* Search Section */}
-          <div className="space-y-4">
-            <div
-              className="flex items-center gap-3 rounded-2xl px-5 transition-all duration-200"
-              style={{
-                backgroundColor: '#111111',
-                border: isFocused ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
-                boxShadow: isFocused ? `0 0 24px rgba(255,107,26,0.15)` : 'none',
-                height: '52px',
-              }}
-            >
-              <FaSearch size={14} style={{ color: isFocused ? ORANGE : '#4b5563', flexShrink: 0, transition: 'color 0.2s' }} />
-              <input
-                ref={searchRef}
-                value={search}
-                onChange={handleSearchChange}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                placeholder="Search tech companies..."
-                className="bg-transparent flex-1 outline-none text-[14px] text-white placeholder-[#4b5563]"
-              />
-              {search && (
-                <button
-                  onClick={() => { setSearch(''); setDebouncedSearch(''); }}
-                  className="text-[#4b5563] hover:text-[#9ca3af] transition-colors text-lg leading-none"
-                >
-                  ×
-                </button>
-              )}
-            </div>
 
-            {/* Filter pills & sorting grid */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 overflow-x-auto pb-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                {FILTER_PILLS.map(pill => {
-                  const isActive = activeFilter === pill.id;
-                  return (
-                    <button
-                      key={pill.id}
-                      onClick={() => { setActiveFilter(pill.id); setVisibleCount(PAGE_SIZE); }}
-                      className="whitespace-nowrap text-[13px] font-semibold transition-all duration-150 cursor-pointer"
-                      style={{
-                        padding: '7px 18px',
-                        borderRadius: '20px',
-                        backgroundColor: isActive ? 'rgba(255,107,26,0.12)' : '#111111',
-                        border: isActive ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
-                        color: isActive ? ORANGE : '#6b7280',
-                      }}
-                    >
-                      {pill.emoji} {pill.label}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Search bar — isolated component, focus state stays local */}
+          <CompanySearchBar
+            onSearchChange={handleSearchChange}
+            onFilterChange={handleFilterChange}
+            onSortChange={handleSortChange}
+            activeFilter={activeFilter}
+            sortDir={sortDir}
+          />
 
-              {/* Sort pill toggles */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setSortDir('asc')}
-                  className="text-[12px] font-bold px-4 py-2 rounded-xl transition-all duration-150 cursor-pointer"
-                  style={{
-                    backgroundColor: sortDir === 'asc' ? ORANGE : '#111111',
-                    border: sortDir === 'asc' ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
-                    color: sortDir === 'asc' ? '#fff' : '#4b5563',
-                  }}
-                >
-                  Sort A-Z
-                </button>
-                <button
-                  onClick={() => setSortDir('desc')}
-                  className="text-[12px] font-bold px-4 py-2 rounded-xl transition-all duration-150 cursor-pointer"
-                  style={{
-                    backgroundColor: sortDir === 'desc' ? ORANGE : '#111111',
-                    border: sortDir === 'desc' ? `1px solid ${ORANGE}` : '1px solid #1e1e1e',
-                    color: sortDir === 'desc' ? '#fff' : '#4b5563',
-                  }}
-                >
-                  Sort Z-A
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Skeletons loader */}
+          {/* Loading skeletons */}
           {isLoading && (
             <div className="relative w-full min-h-[400px]">
-              <style>{`
-                @keyframes shimmer {
-                  0% {
-                    background-position: -200% 0;
-                  }
-                  100% {
-                    background-position: 200% 0;
-                  }
-                }
-                .shimmer-bg {
-                  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%);
-                  background-size: 200% 100%;
-                  animation: shimmer 1.5s infinite linear;
-                }
-              `}</style>
-              
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 opacity-40">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <CompanyCardSkeleton key={i} />
-                ))}
+                {Array.from({ length: 12 }, (_, i) => <CompanyCardSkeleton key={i} />)}
               </div>
-
-              {/* Centered Glassmorphic Loading Overlay */}
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0B0F]/40 backdrop-blur-[2px] z-20 pointer-events-none rounded-3xl">
                 <div className="flex flex-col items-center justify-center p-8 rounded-3xl border border-white/10 bg-[#0D0D12]/95 shadow-2xl gap-4">
-                  <img
-                    src="/imagecopy.png"
-                    alt="CodePrep AI Logo"
-                    className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)] animate-pulse"
-                  />
+                  <img src="/imagecopy.png" alt="CodePrep AI Logo" className="h-10 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,107,26,0.22)] animate-pulse" />
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#FF6B1A] animate-ping" />
-                    <span className="text-xs font-bold tracking-wide text-white">
-                      Loading Company Questions...
-                    </span>
+                    <span className="text-xs font-bold tracking-wide text-white">Loading Company Questions...</span>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Error view */}
+          {/* Error state */}
           {isError && (
-            <div
-              className="text-center py-16 rounded-2xl space-y-4"
-              style={{ border: '1px dashed #1e1e1e', color: '#6b7280' }}
-            >
-              <div>
-                <p className="text-[16px] font-bold text-white mb-1">Failed to load company questions</p>
-                <p className="text-[13px]">There was an error communicating with the server. Please check your internet connection.</p>
-              </div>
+            <div className="text-center py-16 rounded-2xl space-y-4" style={{ border: '1px dashed #1e1e1e', color: '#6b7280' }}>
+              <p className="text-[16px] font-bold text-white mb-1">Failed to load company questions</p>
+              <p className="text-[13px]">There was an error communicating with the server. Please check your internet connection.</p>
               <button
-                type="button"
-                onClick={() => refetch()}
+                type="button" onClick={() => refetch()}
                 className="px-4 py-2 text-xs font-bold rounded-lg bg-[#FF7A00]/15 border border-[#FF7A00]/30 text-[#FFB800] hover:bg-[#FF7A00]/25 transition cursor-pointer"
               >
                 Retry
@@ -706,40 +369,23 @@ export default function CompaniesPage() {
             </div>
           )}
 
-          {/* Empty search state */}
+          {/* Empty state */}
           {!isLoading && !isError && filtered.length === 0 && (
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center justify-center py-24 text-center"
-              >
-                <div className="text-5xl mb-4 select-none">🔍</div>
-                <p className="text-white text-[17px] font-bold mb-1">No matches found</p>
-                <p className="text-[13px]" style={{ color: '#4b5563' }}>
-                  {debouncedSearch
-                    ? 'No companies found with that query.'
-                    : 'No matches found in the selected category.'}
-                </p>
-              </motion.div>
-            </AnimatePresence>
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="text-5xl mb-4 select-none">🔍</div>
+              <p className="text-white text-[17px] font-bold mb-1">No matches found</p>
+              <p className="text-[13px]" style={{ color: '#4b5563' }}>
+                {debouncedSearch ? 'No companies found with that query.' : 'No matches found in the selected category.'}
+              </p>
+            </div>
           )}
 
-          {/* Grid layout */}
-          {!isLoading && !isError && filtered.length > 0 && (
+          {/* Virtualised company grid */}
+          {!isLoading && !isError && visible.length > 0 && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {visible.map((company, i) => (
-                  <CompanyCard
-                    key={company.name || company}
-                    company={company}
-                    index={i}
-                    solvedCount={getCompanySolvedCount(company.name)}
-                  />
-                ))}
-              </div>
+              <CompanyGrid items={visible} solvedMap={solvedMap} />
 
-              {/* Load More section */}
+              {/* Load-more / pagination */}
               <div className="flex flex-col items-center gap-3 pt-6">
                 <p className="text-[13px]" style={{ color: '#4b5563' }}>
                   Showing <span className="text-white font-semibold">{visible.length}</span> of{' '}
@@ -747,13 +393,9 @@ export default function CompaniesPage() {
                 </p>
                 {hasMore && (
                   <button
-                    onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
-                    className="text-[12px] font-bold px-6 py-3 rounded-xl transition-all duration-200 cursor-pointer"
-                    style={{
-                      backgroundColor: '#111111',
-                      border: '1px solid #1e1e1e',
-                      color: '#9ca3af',
-                    }}
+                    onClick={handleLoadMore}
+                    className="text-[12px] font-bold px-6 py-3 rounded-xl cursor-pointer"
+                    style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e', color: '#9ca3af' }}
                     onMouseEnter={e => {
                       e.currentTarget.style.borderColor = ORANGE;
                       e.currentTarget.style.color = '#fff';
@@ -775,9 +417,7 @@ export default function CompaniesPage() {
 
         {/* Footer */}
         <footer className="px-10 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #141414' }}>
-          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>
-            © 2024 CodePrep — Company Questions
-          </span>
+          <span className="text-[12px]" style={{ color: '#2a2a2a' }}>© 2024 CodePrep — Company Questions</span>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: '#2a2a2a' }}>
             <FaTrophy size={10} style={{ color: ORANGE }} />
             Solve company questions to prepare for target interviews
