@@ -5,7 +5,8 @@
   "description": "Companion extension for LeetCode Company Tracker. Detects active problems and extracts metadata.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "https://leetcode.com/*",

@@ -378,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             data.contexts[currentContext] = {
               syncState: "pending_auth",
-              syncError: "Please login to CodePrep website first.",
+              syncError: "Please login to CodePrep.",
               timestamp: new Date().toISOString()
             };
             chrome.storage.local.set({ [currentProblemKey]: data }, () => {
@@ -407,16 +407,42 @@ document.addEventListener("DOMContentLoaded", () => {
           body: JSON.stringify(syncPayload)
         })
         .then(async response => {
+          console.log(`[Manual Sync] HTTP status code: ${response.status}`);
+          
           if (response.status === 401) {
-            throw new Error("Unauthorized. Please login to CodePrep website again.");
+            chrome.storage.local.remove(["token"], () => {
+              console.log("[Manual Sync] Unauthorized (401) - Token removed from storage.");
+            });
+            const error = new Error("CodePrep authentication expired. Please login again.");
+            error.status = 401;
+            throw error;
+          }
+          if (response.status === 403) {
+            const error = new Error("You don't have permission to perform this sync.");
+            error.status = 403;
+            throw error;
+          }
+          if (response.status === 404) {
+            const error = new Error("Sync service unavailable.");
+            error.status = 404;
+            throw error;
+          }
+          if (response.status >= 500) {
+            const error = new Error("Server error. Please try again later.");
+            error.status = response.status;
+            throw error;
           }
           if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+            const error = new Error(errData.error || "Unable to sync right now. Please try again.");
+            error.status = response.status;
+            throw error;
           }
           return response.json();
         })
         .then(res => {
+          chrome.runtime.sendMessage({ action: "showSyncNotification", type: "success" });
+          
           chrome.storage.local.get([currentProblemKey], (storeResult) => {
             const data = storeResult[currentProblemKey] || { status: "Accepted" };
             if (!data.contexts) {
@@ -432,17 +458,64 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         })
         .catch(err => {
-          console.error("Sync to CodePrep failed:", err);
+          console.error("Sync to CodePrep failed. Detailed technical error:", err);
+          
+          let state = "failed";
+          let errorMsg = "Unable to sync right now. Please try again.";
+          let notificationType = null;
+
+          if (err && err.status === 401) {
+            state = "pending_auth";
+            errorMsg = "CodePrep authentication expired. Please login again.";
+            notificationType = "auth_expired";
+          } else if (err && err.status === 403) {
+            state = "failed";
+            errorMsg = "You don't have permission to perform this sync.";
+          } else if (err && err.status === 404) {
+            state = "failed";
+            errorMsg = "Sync service unavailable.";
+          } else if (err && err.status >= 500) {
+            state = "failed";
+            errorMsg = "Server error. Please try again later.";
+          } else if (
+            !err ||
+            err instanceof TypeError ||
+            (err.message && (
+              err.message.toLowerCase().includes("failed to fetch") ||
+              err.message.toLowerCase().includes("networkerror") ||
+              err.message.toLowerCase().includes("cors") ||
+              err.message.toLowerCase().includes("network connection lost")
+            ))
+          ) {
+            state = "failed";
+            errorMsg = "No internet connection.";
+            notificationType = "network_error";
+          } else if (err && err.message) {
+            const msg = err.message.toLowerCase();
+            if (msg.includes("401") || msg.includes("unauthorized")) {
+              state = "pending_auth";
+              errorMsg = "CodePrep authentication expired. Please login again.";
+              notificationType = "auth_expired";
+            } else if (msg.includes("403")) {
+              state = "failed";
+              errorMsg = "You don't have permission to perform this sync.";
+            } else if (msg.includes("404")) {
+              state = "failed";
+              errorMsg = "Sync service unavailable.";
+            } else if (msg.includes("500")) {
+              state = "failed";
+              errorMsg = "Server error. Please try again later.";
+            } else {
+              errorMsg = err.message;
+            }
+          }
+
+          if (notificationType) {
+            chrome.runtime.sendMessage({ action: "showSyncNotification", type: notificationType });
+          }
+
           chrome.storage.local.get([currentProblemKey], (storeResult) => {
             const data = storeResult[currentProblemKey] || { status: "Accepted" };
-            
-            let state = "failed";
-            let errorMsg = `Sync failed: ${err.message}`;
-            if (err.message.includes("login") || err.message.includes("Unauthorized")) {
-              state = "pending_auth";
-              errorMsg = "Please login to CodePrep website first.";
-            }
-
             if (!data.contexts) {
               data.contexts = {};
             }
