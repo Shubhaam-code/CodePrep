@@ -1,10 +1,19 @@
 // config.js
 // Centralized configuration for LeetCode Tracker Companion extension.
-// Auto-detects environment via manifest.update_url.
-// Set RAW_CONFIG.ENV to "development" to force local dev mode.
+//
+// HOW ENVIRONMENT DETECTION WORKS:
+//   - Chrome Web Store installs ALWAYS have `update_url` injected into their manifest.
+//   - Locally unpacked/dev extensions NEVER have `update_url`.
+//   - So:  update_url present  →  production (Web Store install)
+//          update_url absent   →  development (unpacked / local)
+//
+// TO FORCE LOCAL DEV MODE: set ENV to "development" below (remember to revert before commit!).
+// TO FORCE PRODUCTION:     set ENV to "production".
+// FOR AUTO-DETECT (recommended): keep ENV as null.
 
 const RAW_CONFIG = {
-  // Manual override: set to "development" or "production", or null for auto-detect.
+  // Manual override: "development" | "production" | null (auto-detect).
+  // ⚠️  KEEP THIS null BEFORE COMMITTING — auto-detect handles both envs correctly.
   ENV: null,
 
   development: {
@@ -43,7 +52,8 @@ if (!activeEnv) {
       //   change RAW_CONFIG.ENV to "development" at the top of this file.
     } else {
       // Not running inside the Chrome extension runtime (e.g. unit test context).
-      activeEnv = "development";
+      // Default to production for safety — avoids leaking localhost into any non-dev context.
+      activeEnv = "production";
     }
   } catch (e) {
     // Any runtime error defaults to production for safety.
@@ -67,7 +77,7 @@ if (activeEnv === "production") {
   }
 }
 
-console.log(`[CodePrep Config] Active environment: ${activeEnv} | API: ${activeSettings.API_BASE_URL}`);
+console.log(`[CodePrep Config] Active environment: ${activeEnv} | API: ${activeSettings.API_BASE_URL} | update_url detected: ${'update_url' in (typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.getManifest() : {})}`);
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 const CONFIG = {

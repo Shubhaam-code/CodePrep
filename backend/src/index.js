@@ -58,6 +58,10 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'healthy', message: 'API is operational' });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // Mount Routes
 app.use('/api/auth/github', githubAuthRoutes);
 app.use('/api/github', githubRepositoryRoutes);

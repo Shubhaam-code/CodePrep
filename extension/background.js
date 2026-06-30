@@ -263,27 +263,43 @@ function updateSyncState(problemKey, currentContext, syncState, syncError, callb
 
 
 
-async function verifyTokenValidity(token) {
-  try {
-    console.log("[Verify] Checking token...");
+async function verifyTokenValidity(token, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Verify] Checking token (Attempt ${attempt}/${maxRetries})...`);
 
-    const response = await fetch(`${CONFIG.API_BASE_URL}/api/auth/me`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/auth/me`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      console.log("[Verify] Status:", response.status);
+
+      if (response.status === 401 || response.status === 403) {
+        console.log("[Verify] Server confirmed token invalid:", response.status);
+        return { valid: false, reason: "token_invalid" };
       }
-    });
 
-    console.log("[Verify] Status:", response.status);
+      if (!response.ok) {
+        console.warn("[Verify] Server returned non-ok status (not 401/403):", response.status);
+        return { valid: null, reason: "network_error" };
+      }
 
-    const text = await response.text();
-    console.log("[Verify] Response:", text);
+      const text = await response.text();
+      console.log("[Verify] Response length:", text.length);
+      return { valid: true, reason: "ok" };
 
-    return response.ok;
-
-  } catch (err) {
-    console.error("[Verify] Fetch Error:", err);
-    return false;
+    } catch (err) {
+      console.warn(`[Verify] Attempt ${attempt}/${maxRetries} failed (network error):`, err.message || err);
+      if (attempt < maxRetries) {
+        const delay = 1000 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      return { valid: null, reason: "network_error" };
+    }
   }
 }
 
@@ -360,16 +376,21 @@ function getOrRecoverToken() {
       let token = result.token;
 
       if (token) {
-        const isValid = await verifyTokenValidity(token);
+        const verification = await verifyTokenValidity(token);
 
-        console.log("Token valid:", isValid);
+        console.log("Token verification result:", verification);
 
-        if (isValid) {
+        if (verification.valid) {
           console.log("Returning stored token");
           return resolve(token);
         }
 
-        console.log("Stored token exists but validation failed.");
+        if (verification.reason === "network_error") {
+          console.warn("[Verify] Network error during token verification. Skipping silent browser recovery, returning token as-is.");
+          return resolve(token);
+        }
+
+        console.log("Stored token exists but validation failed (token invalid).");
       } else {
         console.log("No token found in chrome.storage.local");
       }
@@ -381,11 +402,17 @@ function getOrRecoverToken() {
       if (recoveredToken) {
         console.log("Recovered token:", recoveredToken);
 
-        const isValid = await verifyTokenValidity(recoveredToken);
+        const verification = await verifyTokenValidity(recoveredToken);
 
-        console.log("Recovered token valid:", isValid);
+        console.log("Recovered token verification result:", verification);
 
-        if (isValid) {
+        if (verification.valid) {
+          chrome.storage.local.set({ token: recoveredToken });
+          return resolve(recoveredToken);
+        }
+
+        if (verification.reason === "network_error") {
+          console.warn("[Verify] Network error verifying recovered token. Storing and returning recovered token.");
           chrome.storage.local.set({ token: recoveredToken });
           return resolve(recoveredToken);
         }
