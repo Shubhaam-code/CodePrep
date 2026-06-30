@@ -37,6 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log(`LeetCode Tracker [Auto Sync]: Auto sync started for URL: ${payload.url}`);
 
     chrome.storage.local.get([problemKey], async (result) => {
+      
       const problemData = result[problemKey] || {};
       const company = problemData.company || null;
       const challenge = problemData.challenge || null;
@@ -260,15 +261,30 @@ function updateSyncState(problemKey, currentContext, syncState, syncError, callb
   });
 }
 
-function verifyTokenValidity(token) {
-  return fetch(`${CONFIG.API_BASE_URL}/api/auth/me`, {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${token}`
-    }
-  })
-    .then(response => response.ok)
-    .catch(() => false);
+
+
+async function verifyTokenValidity(token) {
+  try {
+    console.log("[Verify] Checking token...");
+
+    const response = await fetch(`${CONFIG.API_BASE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    console.log("[Verify] Status:", response.status);
+
+    const text = await response.text();
+    console.log("[Verify] Response:", text);
+
+    return response.ok;
+
+  } catch (err) {
+    console.error("[Verify] Fetch Error:", err);
+    return false;
+  }
 }
 
 function attemptBrowserSessionRecovery() {
@@ -277,27 +293,58 @@ function attemptBrowserSessionRecovery() {
       if (!tabs || tabs.length === 0) {
         return resolve(null);
       }
-      const allowedDomains = ["localhost:5173", "127.0.0.1:5173", "code-prep-three.vercel.app"];
-      const codePrepTabs = tabs.filter(t => t.url && allowedDomains.some(domain => t.url.includes(domain)));
+
+      const allowedDomains = [
+        "localhost:5173",
+        "127.0.0.1:5173",
+        "code-prep-three.vercel.app"
+      ];
+
+      const codePrepTabs = tabs.filter(
+        (t) => t.url && allowedDomains.some((domain) => t.url.includes(domain))
+      );
+
       if (codePrepTabs.length === 0) {
         return resolve(null);
       }
 
       let resolved = false;
       let checkedCount = 0;
-      codePrepTabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, { action: "getTokenFromBrowser" }, (response) => {
-          checkedCount++;
-          if (response && response.token) {
-            if (!resolved) {
+
+      codePrepTabs.forEach((tab) => {
+        chrome.tabs.sendMessage(
+          tab.id,
+          { action: "getTokenFromBrowser" },
+          (response) => {
+
+            // ✅ Handle missing content script
+            if (chrome.runtime.lastError) {
+              console.warn(
+                `[Recovery] Tab ${tab.id}:`,
+                chrome.runtime.lastError.message
+              );
+
+              checkedCount++;
+
+              if (checkedCount === codePrepTabs.length && !resolved) {
+                resolve(null);
+              }
+              return;
+            }
+
+            checkedCount++;
+
+            if (response?.token && !resolved) {
               resolved = true;
               resolve(response.token);
+              return;
+            }
+
+            if (checkedCount === codePrepTabs.length && !resolved) {
+              resolve(null);
             }
           }
-          if (checkedCount === codePrepTabs.length && !resolved) {
-            resolve(null);
-          }
-        });
+        );
       });
     });
   });
@@ -306,20 +353,39 @@ function attemptBrowserSessionRecovery() {
 function getOrRecoverToken() {
   return new Promise((resolve) => {
     chrome.storage.local.get(["token"], async (result) => {
+
+      console.log("========== TOKEN DEBUG ==========");
+      console.log("Stored token:", result.token);
+
       let token = result.token;
+
       if (token) {
         const isValid = await verifyTokenValidity(token);
+
+        console.log("Token valid:", isValid);
+
         if (isValid) {
+          console.log("Returning stored token");
           return resolve(token);
         }
+
+        console.log("Stored token exists but validation failed.");
+      } else {
+        console.log("No token found in chrome.storage.local");
       }
 
       console.log("[Auto Sync] Token missing or invalid. Attempting silent browser recovery...");
+
       const recoveredToken = await attemptBrowserSessionRecovery();
+
       if (recoveredToken) {
+        console.log("Recovered token:", recoveredToken);
+
         const isValid = await verifyTokenValidity(recoveredToken);
+
+        console.log("Recovered token valid:", isValid);
+
         if (isValid) {
-          console.log("[Auto Sync] Session successfully recovered from browser tab.");
           chrome.storage.local.set({ token: recoveredToken });
           return resolve(recoveredToken);
         }
