@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { FaArrowRight } from "react-icons/fa6";
 import {
   FaCode as Code2, FaBookmark as Bookmark, FaCalendar as Calendar,
   FaArrowRight as ArrowRight, FaExternalLinkAlt as ExternalLink,
   FaCheckCircle as CheckCircle2, FaExclamationCircle as AlertCircle,
-  FaSpinner as Loader2, FaGithub as Github, FaFire as Flame, FaPuzzlePiece
+  FaSpinner as Loader2, FaGithub as Github, FaFire as Flame
 } from 'react-icons/fa';
 import apiClient from '../api/axios';
 import { useAppSelector, useAppDispatch } from '../store/store';
@@ -526,7 +526,12 @@ function GVChallengeCard({ streak }) {
   );
 }
 
-// ─── Extension Status Widget ─────────────────────────────────────────────
+// ─── GitHub Sync Status Widget ───────────────────────────────────────────
+// GitHub Sync is an OPTIONAL feature. Users who chose "Just Start Solving"
+// during onboarding have not enabled it — that is not an error, so we present a
+// neutral, inviting CTA (never red, never "install the extension" nagging).
+// Once GitHub is connected, we show live sync status including the companion
+// extension, guiding the user to finish setup if needed.
 function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
   const navigate = useNavigate();
   const { user } = useAppSelector((s) => s.auth);
@@ -539,24 +544,87 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
 
   const githubConnected = user?.githubConnected || false;
   const recentSubmissions = data?.recentSubmissions || [];
+  const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
 
   const lastSyncedTitle = recentSubmissions[0]?.questionTitle || 'None';
   const lastSyncedTime = recentSubmissions[0]?.submittedAt
     ? timeAgo(recentSubmissions[0]?.submittedAt)
     : 'Never';
 
-  let autoSyncStatusText = 'Ready';
-  let autoSyncStatusClass = 'bg-green-500/10 text-green-400 border border-green-500/20';
+  // ── State: GitHub Sync not enabled → neutral optional-feature card ──
+  if (!githubConnected) {
+    return (
+      <div
+        className="rounded-2xl p-5 space-y-4"
+        style={{ backgroundColor: '#111111', border: '1px solid #1e1e1e' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#1e1e1e] pb-3.5">
+          <h3 className="text-white font-black text-sm flex items-center gap-2">
+            <Github className="text-[#FF6B1A]" size={14} /> GitHub Sync
+          </h3>
+          <span className="inline-flex items-center text-[9px] font-black tracking-wider px-2 py-0.5 rounded-lg uppercase bg-white/5 text-gray-400 border border-white/10">
+            Optional
+          </span>
+        </div>
 
-  if (!extensionConnected) {
-    autoSyncStatusText = 'Extension Inactive';
-    autoSyncStatusClass = 'bg-red-500/10 text-red-400 border border-red-500/20';
-  } else if (!githubConnected) {
-    autoSyncStatusText = 'Setup Incomplete';
-    autoSyncStatusClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+        {/* Optional feature pitch */}
+        <div className="flex flex-col items-center text-center py-2 space-y-3">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255,107,26,0.1)', border: '1px solid rgba(255,107,26,0.25)' }}
+          >
+            <Github size={22} style={{ color: ORANGE }} />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-white font-black text-sm">Not enabled</h4>
+            <p className="text-[12px] leading-relaxed px-2" style={{ color: '#6b7280' }}>
+              Automatically sync your accepted LeetCode solutions to GitHub and build a clean portfolio while you practice.
+            </p>
+          </div>
+        </div>
+
+        {/* Feature highlights */}
+        <div className="rounded-xl p-3.5 space-y-2" style={{ backgroundColor: '#0d0d0d', border: '1px solid #1c1c1c' }}>
+          {[
+            'Auto-detect accepted solutions',
+            'Organized solution repositories',
+            'Zero manual uploads',
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2 text-[11px]" style={{ color: '#9ca3af' }}>
+              <CheckCircle2 size={11} style={{ color: ORANGE }} className="shrink-0" />
+              {item}
+            </div>
+          ))}
+        </div>
+
+        {/* CTA — reuses the existing GitHub OAuth flow */}
+        <button
+          onClick={handleReconnect}
+          className="w-full py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-200 flex items-center justify-center gap-2"
+          style={{
+            background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)`,
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(255,107,26,0.2)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 18px rgba(255,107,26,0.3)'; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(255,107,26,0.2)'; }}
+        >
+          Enable GitHub Sync <FaArrowRight size={11} />
+        </button>
+        <p className="text-[10px] text-center" style={{ color: '#4b5563' }}>
+          You can enable this anytime — it's not required to solve problems.
+        </p>
+      </div>
+    );
   }
 
-  const repoUrl = data?.repositoryUrl || user?.githubRepositoryUrl || '';
+  // ── State: GitHub Sync enabled → live status (never red) ──
+  const badgeText = extensionConnected ? 'Active' : 'Finish setup';
+  const badgeClass = extensionConnected
+    ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
 
   return (
     <div
@@ -566,48 +634,55 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#1e1e1e] pb-3.5">
         <h3 className="text-white font-black text-sm flex items-center gap-2">
-          <FaPuzzlePiece className="text-[#FF6B1A]" size={14} /> Extension Status
+          <Github className="text-[#FF6B1A]" size={14} /> GitHub Sync
         </h3>
-        <span className={`inline-flex items-center text-[9px] font-black tracking-wider px-2 py-0.5 rounded-lg uppercase ${autoSyncStatusClass}`}>
-          {autoSyncStatusText}
+        <span className={`inline-flex items-center text-[9px] font-black tracking-wider px-2 py-0.5 rounded-lg uppercase ${badgeClass}`}>
+          {badgeText}
         </span>
       </div>
 
-      {/* Warning Banners */}
+      {/* Finish-setup helper — amber info, never an error */}
       {!extensionConnected && (
         <div
-          className="rounded-xl p-3 text-[11px] leading-relaxed"
-          style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444' }}
-        >
-          Auto-sync is inactive. Please install or enable the LeetCode Companion Extension to sync progress.
-        </div>
-      )}
-      {extensionConnected && !githubConnected && (
-        <div
-          className="rounded-xl p-3 text-[11px] leading-relaxed"
+          className="rounded-xl p-3 text-[11px] leading-relaxed space-y-2.5"
           style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', color: '#f59e0b' }}
         >
-          Connect your GitHub account in configuration settings to trigger automatic backups.
+          <p>
+            GitHub is connected. Add the companion extension to activate automatic syncing of your accepted solutions.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/downloads/leetcode-companion-extension.zip"
+              download
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[10px] text-black"
+              style={{ background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)` }}
+            >
+              Download Extension
+            </a>
+            <a
+              href="/downloads/LeetCode_Extension_Setup_Guide.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[10px] text-gray-300 hover:text-white border border-white/10"
+            >
+              Setup Guide (PDF)
+            </a>
+          </div>
         </div>
       )}
 
       {/* Status Details */}
       <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold" style={{ color: '#4b5563' }}>Extension Installed</span>
+          <span className="font-semibold" style={{ color: '#4b5563' }}>GitHub Integration</span>
+          <span className="text-green-400 font-bold">Connected ✓</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold" style={{ color: '#4b5563' }}>Companion Extension</span>
           {extensionConnected ? (
             <span className="text-green-400 font-bold">Connected ✓</span>
           ) : (
-            <span className="text-red-400 font-bold">Not Connected ✗</span>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold" style={{ color: '#4b5563' }}>GitHub Integration</span>
-          {githubConnected ? (
-            <span className="text-green-400 font-bold">Connected ✓</span>
-          ) : (
-            <span className="text-red-400 font-bold">Not Connected ✗</span>
+            <span className="text-amber-400 font-bold">Setup pending</span>
           )}
         </div>
       </div>
@@ -630,14 +705,14 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
       <div className="pt-2 border-t border-[#1e1e1e] space-y-2">
         <div className="flex gap-2">
           <button
-            onClick={() => githubConnected && repoUrl ? window.open(repoUrl, '_blank', 'noopener,noreferrer') : null}
-            disabled={!githubConnected || !repoUrl}
+            onClick={() => repoUrl ? window.open(repoUrl, '_blank', 'noopener,noreferrer') : null}
+            disabled={!repoUrl}
             className="flex-1 py-2 text-center text-[10px] font-bold rounded-lg border transition flex items-center justify-center gap-1.5"
             style={{
-              backgroundColor: githubConnected && repoUrl ? '#1a1a1a' : 'transparent',
-              borderColor: githubConnected && repoUrl ? '#2a2a2a' : '#161616',
-              color: githubConnected && repoUrl ? '#9ca3af' : '#2d2d2d',
-              cursor: githubConnected && repoUrl ? 'pointer' : 'not-allowed',
+              backgroundColor: repoUrl ? '#1a1a1a' : 'transparent',
+              borderColor: repoUrl ? '#2a2a2a' : '#161616',
+              color: repoUrl ? '#9ca3af' : '#2d2d2d',
+              cursor: repoUrl ? 'pointer' : 'not-allowed',
             }}
           >
             Open Repo
@@ -649,22 +724,12 @@ function ExtensionStatusCard({ extensionConnected, handleReconnect }) {
             All Companies
           </button>
         </div>
-        {!githubConnected ? (
-          <button
-            onClick={handleReconnect}
-            className="w-full py-2.5 font-bold text-[10px] text-white rounded-lg transition text-center cursor-pointer"
-            style={{ background: `linear-gradient(135deg, ${ORANGE}, #ff9a1a)`, border: 'none' }}
-          >
-            Connect GitHub
-          </button>
-        ) : (
-          <button
-            onClick={handleReconnect}
-            className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-white bg-transparent hover:bg-white/5 border border-[#2a2a2a] rounded-lg transition text-center cursor-pointer"
-          >
-            Reconnect GitHub
-          </button>
-        )}
+        <button
+          onClick={handleReconnect}
+          className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-white bg-transparent hover:bg-white/5 border border-[#2a2a2a] rounded-lg transition text-center cursor-pointer"
+        >
+          Reconnect GitHub
+        </button>
       </div>
     </div>
   );
@@ -751,15 +816,6 @@ export default function Dashboard() {
                 System Overview
               </span>
             </div>
-            {user && !user.isOnboarded && (
-              <Link
-                to="/onboarding"
-                className="text-[10px] font-black tracking-widest px-3 py-1.5 rounded-full uppercase"
-                style={{ backgroundColor: 'rgba(245,158,11,0.08)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}
-              >
-                ● Complete Setup Setup
-              </Link>
-            )}
           </div>
 
           <div className="space-y-2">

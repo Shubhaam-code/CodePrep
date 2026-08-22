@@ -187,11 +187,12 @@ export default function Onboarding() {
     });
   };
 
-  const handleSkip = () => {
-    console.log('[Onboarding] User chose to skip onboarding process.');
-    sessionStorage.setItem('onboarding_skipped', 'true');
-    sessionStorage.removeItem('onboarding_step');
-    navigate('/dashboard');
+  // Option 2 — Enable GitHub Sync: enter the existing GitHub → Extension → Ready
+  // setup path. This does not complete onboarding on its own; completion still
+  // happens via handleCompleteOnboarding() on the final "Ready" step.
+  const handleEnableGitHubSync = () => {
+    setErrorMsg('');
+    setStep(2);
   };
 
 
@@ -251,9 +252,9 @@ export default function Onboarding() {
 
 
 
-  // Stepper state configurations
+  // Progress steps shown only during the GitHub Sync path (Option 2).
+  // The Welcome / choice screen (step 1) is not part of this stepper.
   const stepsConfig = [
-    { title: 'Welcome', number: 1 },
     { title: 'GitHub', number: 2 },
     { title: 'Extension', number: 3 },
     { title: 'Ready', number: 4 }
@@ -277,35 +278,37 @@ export default function Onboarding() {
       {/* Onboarding Wizard Card */}
       <div className="w-full max-w-2xl bg-[#0D0D12]/80 backdrop-blur-md border border-white/10 rounded-3xl p-8 space-y-8 shadow-2xl relative z-10">
 
-        {/* Stepper Progress Indicator */}
-        <div className="flex items-center justify-between border-b border-white/5 pb-6">
-          {stepsConfig.map((s, idx) => (
-            <React.Fragment key={s.number}>
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition ${step >= s.number
-                      ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black border-transparent shadow shadow-[#FF7A00]/10'
-                      : 'border-white/20 text-gray-500 bg-[#0B0B0F]'
-                    }`}
-                >
-                  {step > s.number ? <FaCheck size={8} /> : s.number}
+        {/* Stepper Progress Indicator — shown only during the GitHub Sync setup path */}
+        {step >= 2 && (
+          <div className="flex items-center justify-between border-b border-white/5 pb-6">
+            {stepsConfig.map((s, idx) => (
+              <React.Fragment key={s.number}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border transition ${step >= s.number
+                        ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] text-black border-transparent shadow shadow-[#FF7A00]/10'
+                        : 'border-white/20 text-gray-500 bg-[#0B0B0F]'
+                      }`}
+                  >
+                    {step > s.number ? <FaCheck size={8} /> : s.number}
+                  </div>
+                  <span
+                    className={`text-xs font-bold transition ${step >= s.number ? 'text-white' : 'text-gray-500'
+                      }`}
+                  >
+                    {s.title}
+                  </span>
                 </div>
-                <span
-                  className={`text-xs font-bold transition ${step >= s.number ? 'text-white' : 'text-gray-500'
-                    }`}
-                >
-                  {s.title}
-                </span>
-              </div>
-              {idx < stepsConfig.length - 1 && (
-                <div
-                  className={`flex-1 h-[1px] mx-4 transition-all duration-300 ${step > s.number ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800]' : 'bg-white/5'
-                    }`}
-                />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
+                {idx < stepsConfig.length - 1 && (
+                  <div
+                    className={`flex-1 h-[1px] mx-4 transition-all duration-300 ${step > s.number ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800]' : 'bg-white/5'
+                      }`}
+                  />
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
 
         {errorMsg && (
           <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-3.5 text-xs text-red-400 text-center flex items-center justify-center gap-2">
@@ -328,7 +331,7 @@ export default function Onboarding() {
         <div className="min-h-[220px] flex flex-col justify-between">
           <AnimatePresence mode="wait">
 
-            {/* STEP 1: Welcome Screen */}
+            {/* STEP 1: Welcome + Path Choice */}
             {step === 1 && (
               <motion.div
                 key="step1"
@@ -338,40 +341,108 @@ export default function Onboarding() {
                 transition={{ duration: 0.2 }}
                 className="space-y-6"
               >
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-extrabold text-white flex items-center gap-2">
+                <div className="space-y-2 text-center">
+                  <h2 className="text-2xl font-extrabold text-white">
                     Welcome to CodePrep!
                   </h2>
-                  <p className="text-gray-400 text-sm">
-                    Your all-in-one coding workspace. Practice company interview questions, learn DSA through structured pattern roadmaps, and complete the G. Viswanathan Challenge. Accepted solutions are automatically organized into GitHub repositories — building a clean portfolio without manual work.
+                  <p className="text-gray-400 text-sm max-w-md mx-auto">
+                    Practice company interview questions, master DSA pattern roadmaps, and take on the G. Viswanathan Challenge — all in one workspace.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
-                    <div className="text-xl">📚</div>
-                    <h3 className="text-white font-bold text-xs">Structured Learning</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Practice Company questions, DSA Pattern Roadmaps, and the GV Challenge — all in one place.</p>
-                  </div>
-                  <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
-                    <div className="text-xl">📂</div>
-                    <h3 className="text-white font-bold text-xs">GitHub Portfolio</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Accepted solutions are automatically organized into dedicated repositories. Build a clean portfolio effortlessly.</p>
-                  </div>
-                  <div className="bg-[#0B0B0F] border border-white/5 p-4 rounded-2xl space-y-2">
-                    <div className="text-xl">⚡</div>
-                    <h3 className="text-white font-bold text-xs">Companion Extension</h3>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">Detects accepted LeetCode submissions and syncs them in the background. No manual exports needed.</p>
-                  </div>
-                </div>
+                <div>
+                  <p className="text-center text-[11px] font-bold uppercase tracking-widest text-gray-500 mb-4">
+                    How do you want to get started?
+                  </p>
 
-                <div className="pt-4 flex justify-end">
-                  <button
-                    onClick={() => setStep(2)}
-                    className="cursor-pointer px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 shadow-lg shadow-[#FF7A00]/10 transition"
-                  >
-                    Get Started <FaArrowRight size={10} />
-                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                    {/* ── Option 1: Just Start Solving (core experience) ── */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: 0.05 }}
+                      className="group relative flex flex-col bg-[#0B0B0F] border border-white/10 hover:border-[#FF7A00]/40 rounded-2xl p-6 transition-all duration-200"
+                    >
+                      <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                        No setup
+                      </span>
+
+                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-xl shadow-lg shadow-[#FF7A00]/20 mb-4">
+                        🚀
+                      </div>
+
+                      <h3 className="text-white font-extrabold text-base mb-1.5">
+                        Just Start Solving
+                      </h3>
+                      <p className="text-gray-400 text-xs leading-relaxed mb-5 flex-1">
+                        Practice problems, track your progress, and use CodePrep without GitHub setup.
+                      </p>
+
+                      <button
+                        onClick={handleCompleteOnboarding}
+                        disabled={isCompleting}
+                        className={`cursor-pointer w-full px-5 py-2.5 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition ${isCompleting
+                            ? 'bg-white/10 text-gray-400 border border-white/5 cursor-wait'
+                            : 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 text-black shadow-lg shadow-[#FF7A00]/10'
+                          }`}
+                      >
+                        {isCompleting ? (
+                          <>
+                            <FaSpinner className="animate-spin" size={12} /> Starting...
+                          </>
+                        ) : (
+                          <>
+                            Start Solving <FaArrowRight size={10} />
+                          </>
+                        )}
+                      </button>
+                    </motion.div>
+
+                    {/* ── Option 2: Enable GitHub Sync (optional automation) ── */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: 0.12 }}
+                      className="group relative flex flex-col bg-[#0B0B0F] border border-white/10 hover:border-[#FF7A00]/40 rounded-2xl p-6 transition-all duration-200"
+                    >
+                      <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 text-gray-400 border border-white/10">
+                        Optional
+                      </span>
+
+                      <div className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-xl mb-4">
+                        ⚡
+                      </div>
+
+                      <h3 className="text-white font-extrabold text-base mb-1.5">
+                        Enable GitHub Sync
+                      </h3>
+                      <p className="text-gray-400 text-xs leading-relaxed mb-3">
+                        Automatically sync your accepted LeetCode solutions to GitHub.
+                      </p>
+
+                      <ul className="space-y-1.5 mb-5 flex-1">
+                        {[
+                          'Accepted-solution detection',
+                          'Automatic GitHub push',
+                          'Organized solution repositories',
+                          'Background sync via extension',
+                        ].map((item) => (
+                          <li key={item} className="flex items-center gap-2 text-[11px] text-gray-500">
+                            <FaCheckCircle size={9} className="text-[#FF7A00] shrink-0" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+
+                      <button
+                        onClick={handleEnableGitHubSync}
+                        disabled={isCompleting}
+                        className="cursor-pointer w-full px-5 py-2.5 bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 disabled:opacity-50 font-extrabold text-xs text-black rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#FF7A00]/10 transition"
+                      >
+                        <FaGithub size={12} /> Set Up GitHub Sync
+                      </button>
+                    </motion.div>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -795,30 +866,22 @@ export default function Onboarding() {
                     Back
                   </button>
 
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleSkip}
-                      className="cursor-pointer px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/8 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition"
-                    >
-                      Browse Companies
-                    </button>
-                    <button
-                      onClick={handleCompleteOnboarding}
-                      disabled={isCompleting || !githubConnected || !extensionConnected}
-                      className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${!isCompleting && githubConnected && extensionConnected
-                          ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 shadow-lg shadow-[#FF7A00]/10'
-                          : 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/5'
-                        }`}
-                    >
-                      {isCompleting ? (
-                        <>
-                          <FaSpinner className="animate-spin" size={10} /> Completing...
-                        </>
-                      ) : (
-                        'Start Preparing'
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleCompleteOnboarding}
+                    disabled={isCompleting || !githubConnected || !extensionConnected}
+                    className={`cursor-pointer px-5 py-2.5 font-extrabold text-xs text-black rounded-xl flex items-center gap-2 transition ${!isCompleting && githubConnected && extensionConnected
+                        ? 'bg-gradient-to-r from-[#FF7A00] to-[#FFB800] hover:opacity-90 shadow-lg shadow-[#FF7A00]/10'
+                        : 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/5'
+                      }`}
+                  >
+                    {isCompleting ? (
+                      <>
+                        <FaSpinner className="animate-spin" size={10} /> Completing...
+                      </>
+                    ) : (
+                      'Start Preparing'
+                    )}
+                  </button>
                 </div>
               </motion.div>
             )}

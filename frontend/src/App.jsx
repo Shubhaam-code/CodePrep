@@ -29,19 +29,18 @@ const PublicOnlyRoute = () => {
     : <Outlet />;
 };
 
-// Protected - redirect if not logged in. If not onboarded and hasn't skipped, redirect to onboarding.
+// Protected - redirect if not logged in. If not onboarded, redirect to onboarding.
 const ProtectedRoute = () => {
   const { isAuthenticated, user } = useAppSelector(s => s.auth);
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  
-  const skippedOnboarding = sessionStorage.getItem('onboarding_skipped') === 'true';
-  if (user && !user.isOnboarded && !skippedOnboarding) {
+
+  if (user && !user.isOnboarded) {
     return <Navigate to="/onboarding" replace />;
   }
-  
+
   return <Outlet />;
 };
 
